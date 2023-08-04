@@ -543,7 +543,7 @@ class IloManagement(base.ManagementInterface):
                         sec_param_info))
                 LOG.debug("Updating %(param)s security parameter for node "
                           "%(node)s ..", {'param': param, 'node': node.uuid})
-                _execute_ilo_step(node, ('update_' + param), enable, ignore)
+                _execute_ilo_step(node, f'update_{param}', enable, ignore)
                 LOG.info("%(param)s security parameter for node %(node)s is "
                          "updated", {'param': param, 'node': node.uuid})
         except (exception.MissingParameterValue,
@@ -630,7 +630,7 @@ class IloManagement(base.ManagementInterface):
         path = os.path.join(csr_path, task.node.uuid)
         if not os.path.exists(path):
             os.makedirs(path, 0o755)
-        cert_file_name = node.uuid + ".crt"
+        cert_file_name = f"{node.uuid}.crt"
         cert_file_path = os.path.join(path, cert_file_name)
         cert_file = kwargs.get('cert_file')
         url_scheme = urlparse.urlparse(cert_file).scheme

@@ -91,10 +91,8 @@ def _get_sensors_data(task):
                     entity_name, entity_id):
             continue
 
-        sensor_type = ('%s (%s)' %
-                       (sensor_type_name.text, sensor_type_number.text))
-        sensor_id = ('%s (%s)' %
-                     (entity_name.text, entity_id.text))
+        sensor_type = f'{sensor_type_name.text} ({sensor_type_number.text})'
+        sensor_id = f'{entity_name.text} ({entity_id.text})'
         reading_value = sdr.find(
             './Data/Decoded/Sensor/Thresholds/*/Normalized')
         reading_value_text = "None" if (
@@ -102,7 +100,7 @@ def _get_sensors_data(task):
         reading_units = sdr.find('./Data/Decoded/Sensor/BaseUnitName')
         reading_units_text = "None" if (
             reading_units is None) else str(reading_units.text)
-        sensor_reading = '%s %s' % (reading_value_text, reading_units_text)
+        sensor_reading = f'{reading_value_text} {reading_units_text}'
 
         sensors_data.setdefault(sensor_type, {})[sensor_id] = {
             'Sensor Reading': sensor_reading,
@@ -286,34 +284,22 @@ class IRMCManagement(ipmitool.IPMIManagement,
             timeout_disable = "0x00 0x08 0x03 0x08"
             ipmitool.send_raw(task, timeout_disable)
 
-            # note(naohirot):
-            # Set System Boot Options : ipmi cmd '0x08', bootparam '0x05'
-            #
-            # $ ipmitool raw 0x00 0x08 0x05 data1 data2 0x00 0x00 0x00
-            #
-            # data1 : '0xe0' persistent + uefi
-            #         '0xc0' persistent + bios
-            #         '0xa0' next only  + uefi
-            #         '0x80' next only  + bios
-            # data2 : boot device defined in the dict _BOOTPARAM5_DATA2
-
-            bootparam5 = '0x00 0x08 0x05 %s %s 0x00 0x00 0x00'
             if persistent:
                 data1 = '0xe0' if uefi_mode else '0xc0'
             else:
                 data1 = '0xa0' if uefi_mode else '0x80'
             data2 = _BOOTPARAM5_DATA2[device]
 
-            cmd8 = bootparam5 % (data1, data2)
+            cmd8 = f'0x00 0x08 0x05 {data1} {data2} 0x00 0x00 0x00'
             ipmitool.send_raw(task, cmd8)
-        else:
-            if device not in self.get_supported_boot_devices(task):
-                raise exception.InvalidParameterValue(_(
-                    "Invalid boot device %s specified. "
-                    "Current iRMC firmware condition doesn't support IPMI "
-                    "but Redfish.") % device)
+        elif device in self.get_supported_boot_devices(task):
             super(ipmitool.IPMIManagement, self).set_boot_device(
                 task, device, persistent)
+        else:
+            raise exception.InvalidParameterValue(_(
+                "Invalid boot device %s specified. "
+                "Current iRMC firmware condition doesn't support IPMI "
+                "but Redfish.") % device)
 
     def get_boot_device(self, task):
         """Get the current boot device for the task's node.
@@ -427,9 +413,7 @@ class IRMCManagement(ipmitool.IPMIManagement,
         # d_info['irmc_sensor_method'] is either 'scci' or 'ipmitool'.
         d_info = irmc_common.parse_driver_info(task.node)
         sensor_method = d_info['irmc_sensor_method']
-        if sensor_method == 'scci':
-            return _get_sensors_data(task)
-        elif sensor_method == 'ipmitool':
+        if sensor_method == 'ipmitool':
             if (getattr(task.node, 'power_interface') == 'ipmitool'
                 or task.node.driver_internal_info.get('irmc_ipmi_succeed')):
                 return super(IRMCManagement, self).get_sensors_data(task)
@@ -438,6 +422,9 @@ class IRMCManagement(ipmitool.IPMIManagement,
                     "Invalid sensor method %s specified. "
                     "IPMI operation doesn't work on current iRMC "
                     "condition.") % sensor_method)
+
+        elif sensor_method == 'scci':
+            return _get_sensors_data(task)
 
     @METRICS.timer('IRMCManagement.inject_nmi')
     @task_manager.require_exclusive_lock
@@ -612,10 +599,7 @@ class IRMCManagement(ipmitool.IPMIManagement,
             if elcm_license.get('status_code') not in (200, 500):
                 port = task.node.driver_info.get(
                     'irmc_port', CONF.irmc.get('port'))
-                if port == 80:
-                    e_msg = error_msg_http
-                else:
-                    e_msg = error_msg_https
+                e_msg = error_msg_http if port == 80 else error_msg_https
                 raise exception.IRMCOperationError(
                     operation='establishing connection to REST API',
                     error=e_msg)

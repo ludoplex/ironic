@@ -82,10 +82,10 @@ class DracRedfishInspect(redfish_inspect.RedfishInspect):
         # Get dictionary of ethernet interfaces
         if system.ethernet_interfaces and system.ethernet_interfaces.summary:
             ethernet_interfaces = system.ethernet_interfaces.get_members()
-            ethernet_interfaces_mac = {
+            return {
                 interface.identity: interface.mac_address
-                for interface in ethernet_interfaces}
-            return ethernet_interfaces_mac
+                for interface in ethernet_interfaces
+            }
         else:
             return {}
 
@@ -104,12 +104,11 @@ class DracRedfishInspect(redfish_inspect.RedfishInspect):
             # stored in the PxeDevXEnDis and PxeDevXInterface BIOS
             # settings. Get the PXE NIC ports from these settings and
             # their MAC addresses.
-            for param, nic in _PXE_DEV_ENABLED_INTERFACES:
-                if system.bios.attributes[param] == _BIOS_ENABLED_VALUE:
-                    nic_id = system.bios.attributes[nic]
-                    # Get MAC address of the given nic_id
-                    mac_address = ethernet_interfaces_mac[nic_id]
-                    pxe_port_macs.append(mac_address)
+            pxe_port_macs.extend(
+                ethernet_interfaces_mac[system.bios.attributes[nic]]
+                for param, nic in _PXE_DEV_ENABLED_INTERFACES
+                if system.bios.attributes[param] == _BIOS_ENABLED_VALUE
+            )
         elif system.boot.mode == boot_modes.LEGACY_BIOS:
             # When a server is in BIOS boot mode, whether or not a
             # NIC port is set to PXE boot is stored on the NIC port
@@ -122,7 +121,7 @@ class DracRedfishInspect(redfish_inspect.RedfishInspect):
             pxe_port_macs_list = drac_utils.execute_oem_manager_method(
                 task, 'get PXE port MAC addresses',
                 lambda m: m.get_pxe_port_macs_bios(ethernet_interfaces_mac))
-            pxe_port_macs = [mac for mac in pxe_port_macs_list]
+            pxe_port_macs = list(pxe_port_macs_list)
 
         return pxe_port_macs
 
@@ -173,9 +172,9 @@ class DracWSManInspect(base.InspectInterface):
 
         try:
             properties['memory_mb'] = sum(
-                [memory.size_mb for memory in client.list_memory()])
-            cpus = client.list_cpus()
-            if cpus:
+                memory.size_mb for memory in client.list_memory()
+            )
+            if cpus := client.list_cpus():
                 properties['cpu_arch'] = 'x86_64' if cpus[0].arch64 else 'x86'
 
             bios_settings = client.list_bios_settings()
@@ -190,13 +189,11 @@ class DracWSManInspect(base.InspectInterface):
             properties['capabilities'] = capabilties
 
             virtual_disks = client.list_virtual_disks()
-            root_disk = self._guess_root_disk(virtual_disks)
-            if root_disk:
+            if root_disk := self._guess_root_disk(virtual_disks):
                 properties['local_gb'] = int(root_disk.size_mb / units.Ki)
             else:
                 physical_disks = client.list_physical_disks()
-                root_disk = self._guess_root_disk(physical_disks)
-                if root_disk:
+                if root_disk := self._guess_root_disk(physical_disks):
                     properties['local_gb'] = int(
                         root_disk.size_mb / units.Ki)
         except drac_exceptions.BaseClientException as exc:
@@ -206,8 +203,7 @@ class DracWSManInspect(base.InspectInterface):
             raise exception.HardwareInspectionFailure(error=exc)
 
         valid_keys = self.ESSENTIAL_PROPERTIES
-        missing_keys = valid_keys - set(properties)
-        if missing_keys:
+        if missing_keys := valid_keys - set(properties):
             error = (_('Failed to discover the following properties: '
                        '%(missing_keys)s') %
                      {'missing_keys': ', '.join(missing_keys)})
@@ -288,11 +284,6 @@ class DracWSManInspect(base.InspectInterface):
         :returns: Returns list of pxe device interfaces.
         """
         pxe_dev_nics = []
-        pxe_params = ["PxeDev1EnDis", "PxeDev2EnDis",
-                      "PxeDev3EnDis", "PxeDev4EnDis"]
-        pxe_nics = ["PxeDev1Interface", "PxeDev2Interface",
-                    "PxeDev3Interface", "PxeDev4Interface"]
-
         try:
             bios_settings = client.list_bios_settings()
         except drac_exceptions.BaseClientException as exc:
@@ -302,11 +293,17 @@ class DracWSManInspect(base.InspectInterface):
             raise exception.HardwareInspectionFailure(error=exc)
 
         if bios_settings["BootMode"].current_value == "Uefi":
-            for param, nic in zip(pxe_params, pxe_nics):
-                if param in bios_settings and bios_settings[
-                        param].current_value == "Enabled":
-                    pxe_dev_nics.append(
-                        bios_settings[nic].current_value)
+            pxe_params = ["PxeDev1EnDis", "PxeDev2EnDis",
+                          "PxeDev3EnDis", "PxeDev4EnDis"]
+            pxe_nics = ["PxeDev1Interface", "PxeDev2Interface",
+                        "PxeDev3Interface", "PxeDev4Interface"]
+
+            pxe_dev_nics.extend(
+                bios_settings[nic].current_value
+                for param, nic in zip(pxe_params, pxe_nics)
+                if param in bios_settings
+                and bios_settings[param].current_value == "Enabled"
+            )
         elif bios_settings["BootMode"].current_value == "Bios":
             for nic in nics:
                 try:

@@ -28,28 +28,32 @@ from ironic.common import exception
 
 def convert(node_ident=None):
     url = api.request.public_url
-    volume = {}
     if node_ident:
         resource = 'nodes'
-        rargs = '%s/volume/' % node_ident
+        rargs = f'{node_ident}/volume/'
     else:
         resource = 'volume'
         rargs = ''
 
-    volume['links'] = [
-        link.make_link('self', url, resource, rargs),
-        link.make_link('bookmark', url, resource, rargs,
-                       bookmark=True)]
-
+    volume = {
+        'links': [
+            link.make_link('self', url, resource, rargs),
+            link.make_link('bookmark', url, resource, rargs, bookmark=True),
+        ]
+    }
     volume['connectors'] = [
-        link.make_link('self', url, resource, rargs + 'connectors'),
-        link.make_link('bookmark', url, resource, rargs + 'connectors',
-                       bookmark=True)]
+        link.make_link('self', url, resource, f'{rargs}connectors'),
+        link.make_link(
+            'bookmark', url, resource, f'{rargs}connectors', bookmark=True
+        ),
+    ]
 
     volume['targets'] = [
-        link.make_link('self', url, resource, rargs + 'targets'),
-        link.make_link('bookmark', url, resource, rargs + 'targets',
-                       bookmark=True)]
+        link.make_link('self', url, resource, f'{rargs}targets'),
+        link.make_link(
+            'bookmark', url, resource, f'{rargs}targets', bookmark=True
+        ),
+    ]
 
     return volume
 
@@ -79,6 +83,5 @@ class VolumeController(rest.RestController):
     def _lookup(self, subres, *remainder):
         if not api_utils.allow_volume():
             pecan.abort(http_client.NOT_FOUND)
-        subcontroller = self._subcontroller_map.get(subres)
-        if subcontroller:
+        if subcontroller := self._subcontroller_map.get(subres):
             return subcontroller(node_ident=self.parent_node_ident), remainder

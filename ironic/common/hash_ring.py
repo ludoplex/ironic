@@ -62,16 +62,17 @@ class HashRingManager(object):
             return hash_rings
 
     def _load_hash_rings(self):
-        rings = {}
         d2c = self.dbapi.get_active_hardware_type_dict(
             use_groups=self.use_groups)
 
-        for driver_name, hosts in d2c.items():
-            rings[driver_name] = hashring.HashRing(
-                hosts, partitions=2 ** CONF.hash_partition_exponent,
-                hash_function=CONF.hash_ring_algorithm)
-
-        return rings
+        return {
+            driver_name: hashring.HashRing(
+                hosts,
+                partitions=2**CONF.hash_partition_exponent,
+                hash_function=CONF.hash_ring_algorithm,
+            )
+            for driver_name, hosts in d2c.items()
+        }
 
     @classmethod
     def reset(cls):
@@ -101,7 +102,7 @@ class HashRingManager(object):
 
         try:
             if self.use_groups:
-                return ring['%s:%s' % (conductor_group, driver_name)]
+                return ring[f'{conductor_group}:{driver_name}']
             return ring[driver_name]
         except KeyError:
             raise exception.DriverNotFound(

@@ -26,15 +26,12 @@ class StreamingDownloader(object):
 
     def __init__(self, url, chunksize, hash_algo=None, verify=True,
                  certs=None):
-        if hash_algo is not None:
-            self.hasher = hashlib.new(hash_algo)
-        else:
-            self.hasher = None
+        self.hasher = hashlib.new(hash_algo) if hash_algo is not None else None
         self.chunksize = chunksize
         resp = requests.get(url, stream=True, verify=verify, cert=certs,
                             timeout=30)
         if resp.status_code != 200:
-            raise Exception('Invalid response code: %s' % resp.status_code)
+            raise Exception(f'Invalid response code: {resp.status_code}')
 
         self._request = resp
 
@@ -95,11 +92,11 @@ def main():
             module.fail_json(msg='The checksum parameter has to be in format '
                              '"<algorithm>:<checksum>"')
         checksum = checksum.lower()
-        if not all(c in string.hexdigits for c in checksum):
+        if any(c not in string.hexdigits for c in checksum):
             module.fail_json(msg='The checksum must be valid HEX number')
 
         if hash_algo not in hashlib.algorithms_available:
-            module.fail_json(msg="%s checksums are not supported" % hash_algo)
+            module.fail_json(msg=f"{hash_algo} checksums are not supported")
 
     try:
         actual_checksum = stream_to_dest(

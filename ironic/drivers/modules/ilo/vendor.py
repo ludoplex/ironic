@@ -73,8 +73,10 @@ class VendorPassthru(redfish_vendor.RedfishVendorPassthru):
 
     def _validate_boot_into_iso(self, task, kwargs):
         """Validates if attach_iso can be called and if inputs are proper."""
-        if not (task.node.provision_state == states.MANAGEABLE
-                or task.node.maintenance is True):
+        if (
+            task.node.provision_state != states.MANAGEABLE
+            and task.node.maintenance is not True
+        ):
             msg = (_("The requested action 'boot_into_iso' can be performed "
                      "only when node %(node_uuid)s is in %(state)s state or "
                      "in 'maintenance' mode") %

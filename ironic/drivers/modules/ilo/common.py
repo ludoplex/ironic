@@ -17,6 +17,7 @@
 Common functionalities shared between different iLO modules.
 """
 
+
 import os
 import shutil
 import tempfile
@@ -99,13 +100,13 @@ CLEAN_PROPERTIES = {
                              "step 'reset_ilo_credential' is enabled.")
 }
 
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
+COMMON_PROPERTIES = REQUIRED_PROPERTIES | OPTIONAL_PROPERTIES
 DEFAULT_BOOT_MODE = 'LEGACY'
 
 BOOT_MODE_GENERIC_TO_ILO = {'bios': 'legacy', 'uefi': 'uefi'}
-BOOT_MODE_ILO_TO_GENERIC = dict(
-    (v, k) for (k, v) in BOOT_MODE_GENERIC_TO_ILO.items())
+BOOT_MODE_ILO_TO_GENERIC = {
+    v: k for (k, v) in BOOT_MODE_GENERIC_TO_ILO.items()
+}
 
 POST_NULL_STATE = 'Null'
 """ Node is in Null post state."""
@@ -265,19 +266,30 @@ def remove_image_from_swift(object_name, associated_with=None):
         swift_api = swift.SwiftAPI()
         swift_api.delete_object(container, object_name)
     except exception.SwiftObjectNotFoundError as e:
-        LOG.info("Temporary object %(associated_with_msg)s "
-                 "was already deleted from Swift. Error: %(err)s",
-                 {'associated_with_msg':
-                     ("associated with %s " % associated_with
-                         if associated_with else ""), 'err': e})
+        LOG.info(
+            "Temporary object %(associated_with_msg)s "
+            "was already deleted from Swift. Error: %(err)s",
+            {
+                'associated_with_msg': f"associated with {associated_with} "
+                if associated_with
+                else "",
+                'err': e,
+            },
+        )
     except exception.SwiftOperationError as e:
-        LOG.exception("Error while deleting temporary swift object "
-                      "%(object_name)s %(associated_with_msg)s from "
-                      "%(container)s. Error: %(err)s",
-                      {'object_name': object_name, 'container': container,
-                       'associated_with_msg':
-                           ("associated with %s" % associated_with
-                               if associated_with else ""), 'err': e})
+        LOG.exception(
+            "Error while deleting temporary swift object "
+            "%(object_name)s %(associated_with_msg)s from "
+            "%(container)s. Error: %(err)s",
+            {
+                'object_name': object_name,
+                'container': container,
+                'associated_with_msg': f"associated with {associated_with}"
+                if associated_with
+                else "",
+                'err': e,
+            },
+        )
 
 
 def parse_driver_info(node):
@@ -308,15 +320,13 @@ def parse_driver_info(node):
             "node's driver_info: %s") % missing_info)
 
     optional_info = _parse_optional_driver_info(node)
-    d_info.update(optional_info)
+    d_info |= optional_info
 
-    snmp_info = _parse_snmp_driver_info(info)
-    if snmp_info:
+    if snmp_info := _parse_snmp_driver_info(info):
         d_info.update(snmp_info)
 
     for param in CONSOLE_PROPERTIES:
-        value = info.get(param)
-        if value:
+        if value := info.get(param):
             # Currently there's only "console_port" parameter
             # in CONSOLE_PROPERTIES
             if param == "console_port":
@@ -336,10 +346,8 @@ def _parse_snmp_driver_info(info):
         for SNMP_OPTIONAL_PROPERTIES has an invalid value.
     """
     snmp_info = {}
-    missing_info = []
-    valid_values = {'snmp_auth_protocol': ['MD5', 'SHA'],
-                    'snmp_auth_priv_protocol': ['AES', 'DES']}
     if info.get('snmp_auth_user'):
+        missing_info = []
         for param in SNMP_PROPERTIES:
             try:
                 snmp_info[param] = info[param]
@@ -350,6 +358,8 @@ def _parse_snmp_driver_info(info):
                 "The following required SNMP parameters are missing from the "
                 "node's driver_info: %s") % missing_info)
 
+        valid_values = {'snmp_auth_protocol': ['MD5', 'SHA'],
+                        'snmp_auth_priv_protocol': ['AES', 'DES']}
         for param in SNMP_OPTIONAL_PROPERTIES:
             value = None
             try:
@@ -466,14 +476,15 @@ def get_ilo_object(node):
             info['priv_protocol'] = str(snmp_info['snmp_auth_priv_protocol'])
     else:
         info = None
-    ilo_object = ilo_client.IloClient(driver_info['ilo_address'],
-                                      driver_info['ilo_username'],
-                                      driver_info['ilo_password'],
-                                      driver_info['client_timeout'],
-                                      driver_info['client_port'],
-                                      cacert=driver_info['verify_ca'],
-                                      snmp_credentials=info)
-    return ilo_object
+    return ilo_client.IloClient(
+        driver_info['ilo_address'],
+        driver_info['ilo_username'],
+        driver_info['ilo_password'],
+        driver_info['client_timeout'],
+        driver_info['client_port'],
+        cacert=driver_info['verify_ca'],
+        snmp_credentials=info,
+    )
 
 
 def update_ipmi_properties(task):
@@ -521,7 +532,7 @@ def _get_floppy_image_name(node):
 
     :param node: the node for which image name is to be provided.
     """
-    return "image-%s" % node.uuid
+    return f"image-{node.uuid}"
 
 
 def _prepare_floppy_image(task, params):
@@ -545,18 +556,16 @@ def _prepare_floppy_image(task, params):
     :returns: the HTTP image URL or the Swift temp url for the floppy image.
     """
     with tempfile.NamedTemporaryFile(
-            dir=CONF.tempdir) as vfat_image_tmpfile_obj:
+                dir=CONF.tempdir) as vfat_image_tmpfile_obj:
 
         vfat_image_tmpfile = vfat_image_tmpfile_obj.name
         images.create_vfat_image(vfat_image_tmpfile, parameters=params)
         object_name = _get_floppy_image_name(task.node)
-        if CONF.ilo.use_web_server_for_images:
-            image_url = copy_image_to_web_server(vfat_image_tmpfile,
-                                                 object_name)
-        else:
-            image_url = copy_image_to_swift(vfat_image_tmpfile, object_name)
-
-        return image_url
+        return (
+            copy_image_to_web_server(vfat_image_tmpfile, object_name)
+            if CONF.ilo.use_web_server_for_images
+            else copy_image_to_swift(vfat_image_tmpfile, object_name)
+        )
 
 
 def destroy_floppy_image_from_web_server(node):

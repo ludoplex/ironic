@@ -116,12 +116,7 @@ def update_raid_info(node, raid_config):
     current['last_updated'] = str(datetime.datetime.utcnow())
     node.raid_config = current
 
-    # Current RAID configuration can have 0 or 1 root volumes. If there
-    # are > 1 root volumes, then it's invalid.  We check for this condition
-    # while accepting target RAID configuration, but this check is just in
-    # place, if some drivers pass > 1 root volumes to this method.
-    root_logical_disk = _check_and_return_root_volumes(raid_config)
-    if root_logical_disk:
+    if root_logical_disk := _check_and_return_root_volumes(raid_config):
         # Update local_gb and root_device_hint
         properties = node.properties
         if root_logical_disk['size_gb'] != 'MAX':

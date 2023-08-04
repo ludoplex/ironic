@@ -32,7 +32,7 @@ LOG = log.getLogger(__name__)
 
 # TODO(pas-ha) remove in Rocky, until then it is a default
 # for CONF.neutron.url in noauth case when endpoint_override is not set
-DEFAULT_NEUTRON_URL = 'http://%s:9696' % CONF.my_ip
+DEFAULT_NEUTRON_URL = f'http://{CONF.my_ip}:9696'
 
 _NEUTRON_SESSION = None
 
@@ -196,8 +196,7 @@ def _verify_security_groups(security_groups, client):
     if not security_groups:
         return
     try:
-        neutron_sec_groups = set(
-            x.id for x in client.security_groups(id=security_groups))
+        neutron_sec_groups = {x.id for x in client.security_groups(id=security_groups)}
     except openstack_exc.OpenStackCloudException as e:
         msg = (_("Could not retrieve security groups from neutron: %(exc)s") %
                {'exc': e})
@@ -232,7 +231,7 @@ def _add_ip_addresses_for_ipv6_stateful(context, port, client):
         return
     subnet = client.get_subnet(fixed_ips[0]['subnet_id'])
     if subnet and subnet.ipv6_address_mode == 'dhcpv6-stateful':
-        for i in range(1, CONF.neutron.dhcpv6_stateful_address_count):
+        for _ in range(1, CONF.neutron.dhcpv6_stateful_address_count):
             fixed_ips.append({'subnet_id': subnet['id']})
 
         attrs = {'fixed_ips': fixed_ips}
@@ -333,8 +332,7 @@ def add_ports_to_network(task, network_uuid, security_groups=None):
             # TODO(hamdyk): use portbindings.VNIC_SMARTNIC from neutron-lib
             port_attrs['binding:vnic_type'] = VNIC_SMARTNIC
 
-        client_id = ironic_port.extra.get('client-id')
-        if client_id:
+        if client_id := ironic_port.extra.get('client-id'):
             extra_dhcp_opts = port_attrs.get('extra_dhcp_opts', [])
             extra_dhcp_opts.append(
                 {'opt_name': DHCP_CLIENT_ID, 'opt_value': client_id})
@@ -551,13 +549,11 @@ def get_neutron_port_data(port_id, vif_id, client=None, context=None):
         network = {
             'id': fixed_ip['subnet_id'],
             'network_id': port_config['network_id'],
-            'type': 'ipv%s' % subnet_config['ip_version'],
+            'type': f"ipv{subnet_config['ip_version']}",
             'link': port_id,
             'ip_address': fixed_ip['ip_address'],
             'netmask': netmask,
-            'routes': [
-
-            ]
+            'routes': [],
         }
 
         # TODO(etingof): Adding default route if gateway is present.
@@ -610,10 +606,7 @@ def get_node_portmap(task):
     :returns: port information as a dict
     """
 
-    portmap = {}
-    for port in task.ports:
-        portmap[port.uuid] = port.local_link_connection
-    return portmap
+    return {port.uuid: port.local_link_connection for port in task.ports}
     # TODO(jroll) raise InvalidParameterValue if a port doesn't have the
     # necessary info? (probably)
 
@@ -645,7 +638,7 @@ def get_local_group_information(task, portgroup):
         # cloud-init checks the same way, parameter name has to start with
         # 'bond'. Keep this structure when passing properties to neutron ML2
         # drivers.
-        key = prop if prop.startswith('bond') else 'bond_%s' % prop
+        key = prop if prop.startswith('bond') else f'bond_{prop}'
         portgroup_properties[key] = value
 
     return {
@@ -756,9 +749,7 @@ def _validate_agent(client, **kwargs):
     try:
         agents = client.agents(**kwargs)
         for agent in agents:
-            if agent.is_alive:
-                return True
-            return False
+            return bool(agent.is_alive)
     except openstack_exc.OpenStackCloudException:
         raise exception.NetworkError('Failed to contact Neutron server')
 
@@ -856,15 +847,20 @@ def get_physnets_by_port_uuid(client, port_uuid):
         # which will contain a list of segments. Each segment should have a
         # 'provider:physical_network' parameter which contains the physical
         # network of the segment.
-        return set(segment[PHYSNET_PARAM_NAME]
-                   for segment in network.segments
-                   if segment[PHYSNET_PARAM_NAME])
+        return {
+            segment[PHYSNET_PARAM_NAME]
+            for segment in network.segments
+            if segment[PHYSNET_PARAM_NAME]
+        }
     else:
         # A network with a single segment will have a
         # 'provider:physical_network' parameter which contains the network's
         # physical network.
-        return (set([network.provider_physical_network])
-                if network.provider_physical_network else set())
+        return (
+            {network.provider_physical_network}
+            if network.provider_physical_network
+            else set()
+        )
 
 
 @retry(

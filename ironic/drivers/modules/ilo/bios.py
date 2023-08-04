@@ -170,9 +170,7 @@ class IloBIOS(base.BIOSInterface):
 
         """
         node = task.node
-        data = {}
-        for setting in settings:
-            data.update({setting['name']: setting['value']})
+        data = {setting['name']: setting['value'] for setting in settings}
         if not node.driver_internal_info.get('apply_bios'):
             return self._execute_pre_boot_bios_step(
                 task, 'apply_configuration', data)
@@ -226,12 +224,10 @@ class IloBIOS(base.BIOSInterface):
                 raise exception.NodeCleaningFailure(errmsg)
             raise exception.InstanceDeployFailure(reason=errmsg)
 
-        fmt_bios_settings = []
-
-        for setting in bios_settings:
-            fmt_bios_settings.append({"name": setting,
-                                      "value": bios_settings[setting]})
-
+        fmt_bios_settings = [
+            {"name": setting, "value": bios_settings[setting]}
+            for setting in bios_settings
+        ]
         create_list, update_list, delete_list, nochange_list = (
             objects.BIOSSettingList.sync_node_setting(task.context,
                                                       nodeid,

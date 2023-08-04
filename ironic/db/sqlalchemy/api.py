@@ -198,10 +198,9 @@ def add_port_filter(query, value):
 def add_port_filter_by_node(query, value):
     if strutils.is_int_like(value):
         return query.filter_by(node_id=value)
-    else:
-        query = query.join(models.Node,
-                           models.Port.node_id == models.Node.id)
-        return query.filter(models.Node.uuid == value)
+    query = query.join(models.Node,
+                       models.Port.node_id == models.Node.id)
+    return query.filter(models.Node.uuid == value)
 
 
 def add_port_filter_by_node_owner(query, value):
@@ -257,48 +256,43 @@ def add_portgroup_filter(query, value):
 def add_portgroup_filter_by_node(query, value):
     if strutils.is_int_like(value):
         return query.filter_by(node_id=value)
-    else:
-        query = query.join(models.Node,
-                           models.Portgroup.node_id == models.Node.id)
-        return query.filter(models.Node.uuid == value)
+    query = query.join(models.Node,
+                       models.Portgroup.node_id == models.Node.id)
+    return query.filter(models.Node.uuid == value)
 
 
 def add_port_filter_by_portgroup(query, value):
     if strutils.is_int_like(value):
         return query.filter_by(portgroup_id=value)
-    else:
-        query = query.join(models.Portgroup,
-                           models.Port.portgroup_id == models.Portgroup.id)
-        return query.filter(models.Portgroup.uuid == value)
+    query = query.join(models.Portgroup,
+                       models.Port.portgroup_id == models.Portgroup.id)
+    return query.filter(models.Portgroup.uuid == value)
 
 
 def add_node_filter_by_chassis(query, value):
     if strutils.is_int_like(value):
         return query.filter_by(chassis_id=value)
-    else:
-        query = query.join(models.Chassis,
-                           models.Node.chassis_id == models.Chassis.id)
-        return query.filter(models.Chassis.uuid == value)
+    query = query.join(models.Chassis,
+                       models.Node.chassis_id == models.Chassis.id)
+    return query.filter(models.Chassis.uuid == value)
 
 
 def add_allocation_filter_by_node(query, value):
     if strutils.is_int_like(value):
         return query.filter_by(node_id=value)
-    else:
-        query = query.join(models.Node,
-                           models.Allocation.node_id == models.Node.id)
-        return query.filter(models.Node.uuid == value)
+    query = query.join(models.Node,
+                       models.Allocation.node_id == models.Node.id)
+    return query.filter(models.Node.uuid == value)
 
 
 def add_allocation_filter_by_conductor(query, value):
     if strutils.is_int_like(value):
         return query.filter_by(conductor_affinity=value)
-    else:
-        # Assume hostname and join with the conductor table
-        query = query.join(
-            models.Conductor,
-            models.Allocation.conductor_affinity == models.Conductor.id)
-        return query.filter(models.Conductor.hostname == value)
+    # Assume hostname and join with the conductor table
+    query = query.join(
+        models.Conductor,
+        models.Allocation.conductor_affinity == models.Conductor.id)
+    return query.filter(models.Conductor.hostname == value)
 
 
 def _paginate_query(model, limit=None, marker=None, sort_key=None,
@@ -427,9 +421,8 @@ class Connection(api.Connection):
 
     def _validate_nodes_filters(self, filters):
         if filters is None:
-            filters = dict()
-        unsupported_filters = set(filters).difference(self._NODE_FILTERS)
-        if unsupported_filters:
+            filters = {}
+        if unsupported_filters := set(filters).difference(self._NODE_FILTERS):
             msg = _("SqlAlchemy API does not support "
                     "filtering by %s") % ', '.join(unsupported_filters)
             raise ValueError(msg)
@@ -473,8 +466,7 @@ class Connection(api.Connection):
         if 'description_contains' in filters:
             keyword = filters['description_contains']
             if keyword is not None:
-                query = query.filter(
-                    models.Node.description.like(r'%{}%'.format(keyword)))
+                query = query.filter(models.Node.description.like(f'%{keyword}%'))
         if 'project' in filters:
             project = filters['project']
             query = query.filter((models.Node.owner == project)
@@ -494,11 +486,10 @@ class Connection(api.Connection):
 
     def _add_allocations_filters(self, query, filters):
         if filters is None:
-            filters = dict()
+            filters = {}
         supported_filters = {'state', 'resource_class', 'node_uuid',
                              'conductor_affinity', 'owner'}
-        unsupported_filters = set(filters).difference(supported_filters)
-        if unsupported_filters:
+        if unsupported_filters := set(filters).difference(supported_filters):
             msg = _("SqlAlchemy API does not support "
                     "filtering by %s") % ', '.join(unsupported_filters)
             raise ValueError(msg)
@@ -538,17 +529,16 @@ class Connection(api.Connection):
 
     def get_node_list(self, filters=None, limit=None, marker=None,
                       sort_key=None, sort_dir=None, fields=None):
-        if not fields:
-            query = _get_node_select()
-            query = self._add_nodes_filters(query, filters)
-            return _paginate_query(models.Node, limit, marker,
-                                   sort_key, sort_dir, query)
-        else:
+        if fields:
             # Shunt to the proper method to return the limited list.
             return self.get_node_list_columns(columns=fields, filters=filters,
                                               limit=limit, marker=marker,
                                               sort_key=sort_key,
                                               sort_dir=sort_dir)
+        query = _get_node_select()
+        query = self._add_nodes_filters(query, filters)
+        return _paginate_query(models.Node, limit, marker,
+                               sort_key, sort_dir, query)
 
     def get_node_list_columns(self, columns=None, filters=None, limit=None,
                               marker=None, sort_key=None, sort_dir=None):
@@ -609,8 +599,7 @@ class Connection(api.Connection):
         uuids = {i for i in idents if uuidutils.is_uuid_like(i)}
         names = {i for i in idents if not uuidutils.is_uuid_like(i)
                  and utils.is_valid_logical_name(i)}
-        missing = idents - set(uuids) - set(names)
-        if missing:
+        if missing := idents - set(uuids) - set(names):
             # Such nodes cannot exist, bailing out early
             raise exception.NodeNotFound(
                 _("Nodes cannot be found: %s") % ', '.join(missing))
@@ -630,8 +619,7 @@ class Connection(api.Connection):
                 if row[1] and row[1] in idents:
                     mapping[row[1]] = row[0]
 
-        missing = idents - set(mapping)
-        if missing:
+        if missing := idents - set(mapping):
             raise exception.NodeNotFound(
                 _("Nodes cannot be found: %s") % ', '.join(missing))
 
@@ -648,11 +636,12 @@ class Connection(api.Connection):
             # they hold locks at the same time.
             with _session_for_write() as session:
                 res = session.execute(
-                    sa.update(models.Node).
-                    where(models.Node.id == node.id).
-                    where(models.Node.reservation == None).  # noqa
-                    values(reservation=tag).
-                    execution_options(synchronize_session=False))
+                    sa.update(models.Node)
+                    .where(models.Node.id == node.id)
+                    .where(models.Node.reservation is None)
+                    .values(reservation=tag)
+                    .execution_options(synchronize_session=False)
+                )
                 session.flush()
             node = self._get_node_by_id_no_joins(node.id)
             # NOTE(TheJulia): In SQLAlchemy 2.0 style, we don't
@@ -931,14 +920,16 @@ class Connection(api.Connection):
                 if values['provision_state'] == states.INSPECTING:
                     values['inspection_started_at'] = timeutils.utcnow()
                     values['inspection_finished_at'] = None
-                elif ((ref.provision_state == states.INSPECTING
-                       or ref.provision_state == states.INSPECTWAIT)
-                      and values['provision_state'] == states.MANAGEABLE):
+                elif (
+                    ref.provision_state in [states.INSPECTING, states.INSPECTWAIT]
+                    and values['provision_state'] == states.MANAGEABLE
+                ):
                     values['inspection_finished_at'] = timeutils.utcnow()
                     values['inspection_started_at'] = None
-                elif ((ref.provision_state == states.INSPECTING
-                       or ref.provision_state == states.INSPECTWAIT)
-                      and values['provision_state'] == states.INSPECTFAIL):
+                elif (
+                    ref.provision_state in [states.INSPECTING, states.INSPECTWAIT]
+                    and values['provision_state'] == states.INSPECTFAIL
+                ):
                     values['inspection_started_at'] = None
 
             ref.update(values)
@@ -1407,10 +1398,7 @@ class Connection(api.Connection):
             d2c = collections.defaultdict(set)
             for iface_row, cdr_row in result:
                 hw_type = iface_row['hardware_type']
-                if use_groups:
-                    key = '%s:%s' % (cdr_row['conductor_group'], hw_type)
-                else:
-                    key = hw_type
+                key = f"{cdr_row['conductor_group']}:{hw_type}" if use_groups else hw_type
                 d2c[key].add(cdr_row['hostname'])
         return d2c
 
@@ -2093,7 +2081,7 @@ class Connection(api.Connection):
                     node_id=node_id, name=name).delete()
                 if count == 0:
                     missing_bios_settings.append(name)
-        if len(missing_bios_settings) > 0:
+        if missing_bios_settings:
             raise exception.BIOSSettingListNotFound(
                 node=node_id, names=','.join(missing_bios_settings))
 
@@ -2690,19 +2678,12 @@ class Connection(api.Connection):
         #             So we just aren't even going to try.
         shard_list = []
         with _session_for_read() as session:
-            res = session.execute(
+            if res := session.execute(
                 # Note(JayF): SQLAlchemy counts are notoriously slow because
                 #             sometimes they will use a subquery. Be careful
                 #             before changing this to use any magic.
-                sa.text(
-                    "SELECT count(id), shard from nodes group by shard;"
-                )).fetchall()
-
-            if res:
+                sa.text("SELECT count(id), shard from nodes group by shard;")
+            ).fetchall():
                 res.sort(key=lambda x: x[0], reverse=True)
-                for shard in res:
-                    shard_list.append(
-                        {"name": str(shard[1]), "count": shard[0]}
-                    )
-
+                shard_list.extend({"name": str(shard[1]), "count": shard[0]} for shard in res)
         return shard_list

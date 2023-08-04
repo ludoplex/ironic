@@ -38,7 +38,7 @@ def wrapfunc(f):
 def getargspec(f):
     f = getattr(f, '_wsme_original_func', f)
     func_argspec = inspect.getfullargspec(f)
-    return func_argspec[0:4]
+    return func_argspec[:4]
 
 
 class FunctionArgument(object):
@@ -100,10 +100,7 @@ class FunctionDefinition(object):
 
     def get_arg(self, name):
         """Returns a :class:`FunctionArgument` from its name"""
-        for arg in self.arguments:
-            if arg.name == name:
-                return arg
-        return None
+        return next((arg for arg in self.arguments if arg.name == name), None)
 
     def resolve_types(self, registry):
         self.return_type = registry.resolve_type(self.return_type)

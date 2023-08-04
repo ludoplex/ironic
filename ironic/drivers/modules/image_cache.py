@@ -103,12 +103,12 @@ class ImageCache(object):
         # NOTE(kaifeng) The ".converted" suffix acts as an indicator that the
         # image cached has gone through the conversion logic.
         if force_raw:
-            master_file_name = master_file_name + '.converted'
+            master_file_name = f'{master_file_name}.converted'
 
         master_path = os.path.join(self.master_dir, master_file_name)
 
         if CONF.parallel_image_downloads:
-            img_download_lock_name = 'download-image:%s' % master_file_name
+            img_download_lock_name = f'download-image:{master_file_name}'
 
         # TODO(dtantsur): lock expiration time
         with lockutils.lock(img_download_lock_name):
@@ -335,7 +335,7 @@ def _free_disk_space_for(path):
 
 def _fetch(context, image_href, path, force_raw=False):
     """Fetch image and convert to raw format if needed."""
-    path_tmp = "%s.part" % path
+    path_tmp = f"{path}.part"
     images.fetch(context, image_href, path_tmp, force_raw=False)
     # Notes(yjiang5): If glance can provide the virtual size information,
     # then we can firstly clean cache and then invoke images.fetch().
@@ -444,16 +444,7 @@ def _delete_master_path_if_stale(master_path, href, img_info):
         # Glance image contents cannot be updated without changing image's UUID
         return os.path.exists(master_path)
     if os.path.exists(master_path):
-        img_mtime = img_info.get('updated_at')
-        if not img_mtime:
-            # This means that href is not a glance image and doesn't have an
-            # updated_at attribute. To play on the safe side, redownload the
-            # master copy of the image.
-            LOG.warning("Image service couldn't determine last "
-                        "modification time of %(href)s, updating "
-                        "the cached copy %(cached_file)s.",
-                        {'href': href, 'cached_file': master_path})
-        else:
+        if img_mtime := img_info.get('updated_at'):
             master_mtime = utils.unix_file_modification_datetime(master_path)
             if img_mtime <= master_mtime:
                 return True
@@ -464,6 +455,14 @@ def _delete_master_path_if_stale(master_path, href, img_info):
                      {'href': href, 'remote_time': img_mtime,
                       'local_time': master_mtime, 'cached_file': master_path})
 
+        else:
+            # This means that href is not a glance image and doesn't have an
+            # updated_at attribute. To play on the safe side, redownload the
+            # master copy of the image.
+            LOG.warning("Image service couldn't determine last "
+                        "modification time of %(href)s, updating "
+                        "the cached copy %(cached_file)s.",
+                        {'href': href, 'cached_file': master_path})
         os.unlink(master_path)
     return False
 

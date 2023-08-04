@@ -67,11 +67,10 @@ class DracWSManVendorPassthru(base.VendorInterface):
         :raises: DracOperationError on an error from python-dracclient.
         :returns: a dictionary containing BIOS settings.
         """
-        bios_attrs = {}
-        for name, bios_attr in drac_bios.get_config(task.node).items():
-            bios_attrs[name] = bios_attr.__dict__
-
-        return bios_attrs
+        return {
+            name: bios_attr.__dict__
+            for name, bios_attr in drac_bios.get_config(task.node).items()
+        }
 
     @METRICS.timer('DracVendorPassthru.set_bios_config')
     @base.passthru(['POST'], async_call=False,

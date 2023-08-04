@@ -191,12 +191,11 @@ def node_wait_for_power_state(task, new_state, timeout=None):
 
 def _calculate_target_state(new_state):
     if new_state in (states.POWER_ON, states.REBOOT, states.SOFT_REBOOT):
-        target_state = states.POWER_ON
+        return states.POWER_ON
     elif new_state in (states.POWER_OFF, states.SOFT_POWER_OFF):
-        target_state = states.POWER_OFF
+        return states.POWER_OFF
     else:
-        target_state = None
-    return target_state
+        return None
 
 
 def _can_skip_state_change(task, new_state):
@@ -630,10 +629,11 @@ def fail_on_error(error_callback, msg, *error_args, **error_kwargs):
             try:
                 return func(task, *args, **kwargs)
             except Exception as exc:
-                errmsg = "%s. %s: %s" % (msg, exc.__class__.__name__, exc)
+                errmsg = f"{msg}. {exc.__class__.__name__}: {exc}"
                 error_callback(task, errmsg, *error_args, **error_kwargs)
 
         return wrapped
+
     return wrapper
 
 
@@ -739,7 +739,7 @@ def cleanup_rescuewait_timeout(task):
     """
     msg = _('Timeout reached while waiting for rescue ramdisk callback '
             'for node')
-    errmsg = msg + ' %(node)s'
+    errmsg = f'{msg} %(node)s'
     LOG.error(errmsg, {'node': task.node.uuid})
     rescuing_error_handler(task, msg, set_fail_state=False)
 
@@ -933,7 +933,7 @@ def notify_conductor_resume_operation(task, operation):
     """
     LOG.debug('Sending RPC to conductor to resume %(op)s steps for node '
               '%(node)s', {'op': operation, 'node': task.node.uuid})
-    method = 'continue_node_%s' % operation
+    method = f'continue_node_{operation}'
     from ironic.conductor import rpcapi
     uuid = task.node.uuid
     rpc = rpcapi.ConductorAPI()
@@ -1163,13 +1163,12 @@ def is_fast_track(task):
 
     if agent_is_alive(task.node):
         return True
-    else:
-        LOG.debug('Node %(node)s should be fast-track-able, but the agent '
-                  'doesn\'t seem to be running. Last heartbeat: %(last)s',
-                  {'node': task.node.uuid,
-                   'last': task.node.driver_internal_info.get(
-                       'agent_last_heartbeat')})
-        return False
+    LOG.debug('Node %(node)s should be fast-track-able, but the agent '
+              'doesn\'t seem to be running. Last heartbeat: %(last)s',
+              {'node': task.node.uuid,
+               'last': task.node.driver_internal_info.get(
+                   'agent_last_heartbeat')})
+    return False
 
 
 def remove_agent_url(node):
@@ -1204,7 +1203,7 @@ def _get_node_next_steps(task, step_type, skip_current_step=True):
     :returns: index of the next step; None if there are none to execute.
 
     """
-    valid_types = set(['clean', 'deploy'])
+    valid_types = {'clean', 'deploy'}
     if step_type not in valid_types:
         # NOTE(rloo): No need to i18n this, since this would be a
         # developer error; it isn't user-facing.
@@ -1212,18 +1211,18 @@ def _get_node_next_steps(task, step_type, skip_current_step=True):
             'step_type must be one of %(valid)s, not %(step)s'
             % {'valid': valid_types, 'step': step_type})
     node = task.node
-    if not getattr(node, '%s_step' % step_type):
+    if not getattr(node, f'{step_type}_step'):
         # first time through, all steps need to be done. Return the
         # index of the first step in the list.
         return 0
 
-    ind = node.driver_internal_info.get('%s_step_index' % step_type)
+    ind = node.driver_internal_info.get(f'{step_type}_step_index')
     if ind is None:
         return None
 
     if skip_current_step:
         ind += 1
-    if ind >= len(node.driver_internal_info['%s_steps' % step_type]):
+    if ind >= len(node.driver_internal_info[f'{step_type}_steps']):
         # no steps left to do
         ind = None
     return ind
@@ -1247,7 +1246,8 @@ def update_next_step_index(task, step_type):
     :returns: Index of the next step.
     """
     skip_current_step = task.node.del_driver_internal_info(
-        'skip_current_%s_step' % step_type, True)
+        f'skip_current_{step_type}_step', True
+    )
     if step_type == 'clean':
         task.node.del_driver_internal_info('cleaning_polling')
     else:
@@ -1362,29 +1362,22 @@ def get_attached_vif(port):
              transient state vif on the port.
     """
 
-    tenant_vif = port.internal_info.get('tenant_vif_port_id')
-    if tenant_vif:
+    if tenant_vif := port.internal_info.get('tenant_vif_port_id'):
         return (tenant_vif, 'tenant')
-    clean_vif = port.internal_info.get('cleaning_vif_port_id')
-    if clean_vif:
+    if clean_vif := port.internal_info.get('cleaning_vif_port_id'):
         return (clean_vif, 'cleaning')
-    prov_vif = port.internal_info.get('provisioning_vif_port_id')
-    if prov_vif:
+    if prov_vif := port.internal_info.get('provisioning_vif_port_id'):
         return (prov_vif, 'provisioning')
-    rescue_vif = port.internal_info.get('rescuing_vif_port_id')
-    if rescue_vif:
+    if rescue_vif := port.internal_info.get('rescuing_vif_port_id'):
         return (rescue_vif, 'rescuing')
-    inspection_vif = port.internal_info.get('inspection_vif_port_id')
-    if inspection_vif:
+    if inspection_vif := port.internal_info.get('inspection_vif_port_id'):
         return (inspection_vif, 'inspecting')
     return (None, None)
 
 
 def store_agent_certificate(node, agent_verify_ca):
     """Store certificate received from the agent and return its path."""
-    existing_verify_ca = node.driver_internal_info.get(
-        'agent_verify_ca')
-    if existing_verify_ca:
+    if existing_verify_ca := node.driver_internal_info.get('agent_verify_ca'):
         if os.path.exists(existing_verify_ca):
             try:
                 with open(existing_verify_ca, 'rt') as fp:
@@ -1394,18 +1387,17 @@ def store_agent_certificate(node, agent_verify_ca):
                     LOG.exception('Could not read the existing TLS certificate'
                                   ' for node %s', node.uuid)
 
-            if existing_text.strip() != agent_verify_ca.strip():
-                LOG.error('Content mismatch for agent_verify_ca for '
-                          'node %s', node.uuid)
-                raise exception.InvalidParameterValue(
-                    _('Detected change in ramdisk provided "agent_verify_ca"'))
-            else:
+            if existing_text.strip() == agent_verify_ca.strip():
                 return existing_verify_ca
+            LOG.error('Content mismatch for agent_verify_ca for '
+                      'node %s', node.uuid)
+            raise exception.InvalidParameterValue(
+                _('Detected change in ramdisk provided "agent_verify_ca"'))
         else:
             LOG.info('Current agent_verify_ca was not found for node '
                      '%s, assuming take over and storing', node.uuid)
 
-    fname = os.path.join(CONF.agent.certificates_path, '%s.crt' % node.uuid)
+    fname = os.path.join(CONF.agent.certificates_path, f'{node.uuid}.crt')
     try:
         # FIXME(dtantsur): it makes more sense to create this path on conductor
         # start-up, but it requires reworking a ton of unit tests.
@@ -1734,8 +1726,9 @@ def get_token_project_from_request(ctx):
 
     try:
         if ctx.auth_token_info:
-            project = ctx.auth_token_info.get('token', {}).get('project', {})
-            if project:
+            if project := ctx.auth_token_info.get('token', {}).get(
+                'project', {}
+            ):
                 return project.get('id')
     except AttributeError:
         LOG.warning('Attempted to identify requestor project ID value, '

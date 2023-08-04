@@ -113,5 +113,4 @@ def power_update(context, server_uuid, target_power_state):
         LOG.error('Invalid Power State %s.', target_power_state)
         return False
     event = _get_power_update_event(server_uuid, target_power_state)
-    result = _send_event(context, event, api_version=NOVA_API_MICROVERSION)
-    return result
+    return _send_event(context, event, api_version=NOVA_API_MICROVERSION)

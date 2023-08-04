@@ -229,8 +229,8 @@ def _freshly_booted(commands, step_type):
     """
     return (
         not commands
-        or (len(commands) == 1
-            and commands[0]['command_name'] == 'get_%s_steps' % step_type)
+        or len(commands) == 1
+        and commands[0]['command_name'] == f'get_{step_type}_steps'
     )
 
 
@@ -245,7 +245,7 @@ def _get_completed_command(task, commands, step_type):
 
     last_command = commands[-1]
 
-    if last_command['command_name'] != 'execute_%s_step' % step_type:
+    if last_command['command_name'] != f'execute_{step_type}_step':
         # catches race condition where execute_step is still
         # processing so the command hasn't started yet
         LOG.debug('Expected agent last command to be "execute_%(type)s_step" '
@@ -257,7 +257,7 @@ def _get_completed_command(task, commands, step_type):
         return
 
     last_result = last_command.get('command_result') or {}
-    last_step = last_result.get('%s_step' % step_type)
+    last_step = last_result.get(f'{step_type}_step')
     current_step = (task.node.clean_step if step_type == 'clean'
                     else task.node.deploy_step)
     if last_command['command_status'] == 'RUNNING':
@@ -324,8 +324,7 @@ def get_steps(task, step_type, interface=None, override_priorities=None):
     """
     node = task.node
     try:
-        all_steps = node.driver_internal_info['agent_cached_%s_steps'
-                                              % step_type]
+        all_steps = node.driver_internal_info[f'agent_cached_{step_type}_steps']
     except KeyError:
         LOG.debug('%(type)s steps are not yet available for node %(node)s',
                   {'type': step_type.capitalize(), 'node': node.uuid})
@@ -378,7 +377,7 @@ def execute_step(task, step, step_type, client=None):
         client = agent_client.get_client(task)
     ports = objects.Port.list_by_node_id(
         task.context, task.node.id)
-    call = getattr(client, 'execute_%s_step' % step_type)
+    call = getattr(client, f'execute_{step_type}_step')
     result = call(step, task.node, ports)
     if not result.get('command_status'):
         _raise(step_type, _(
@@ -460,9 +459,8 @@ class HeartbeatMixin(object):
         node = task.node
         if (node.provision_state in (states.CLEANING, states.CLEANWAIT)
                 and not CONF.conductor.allow_provisioning_in_maintenance):
-            log_msg = ('Aborting cleaning for node %s, as it is in '
-                       'maintenance mode' % node.uuid)
             last_error = _('Cleaning aborted as node is in maintenance mode')
+            log_msg = f'Aborting cleaning for node {node.uuid}, as it is in maintenance mode'
             manager_utils.cleaning_error_handler(task, log_msg,
                                                  errmsg=last_error)
         elif (node.provision_state in (states.DEPLOYING, states.DEPLOYWAIT)
@@ -777,14 +775,15 @@ class AgentBaseMixin(object):
         """
         node = task.node
         previous_steps = node.driver_internal_info.get(
-            'agent_cached_%s_steps' % step_type)
+            f'agent_cached_{step_type}_steps'
+        )
         LOG.debug('Refreshing agent %(type)s step cache for node %(node)s. '
                   'Previously cached steps: %(steps)s',
                   {'node': node.uuid, 'type': step_type,
                    'steps': previous_steps})
 
         client = agent_client.get_client(task)
-        call = getattr(client, 'get_%s_steps' % step_type)
+        call = getattr(client, f'get_{step_type}_steps')
         try:
             agent_result = call(node, task.ports).get('command_result', {})
         except exception.AgentInProgress as exc:
@@ -793,19 +792,10 @@ class AgentBaseMixin(object):
                       {'node': task.node.uuid})
             return
 
-            # TODO(dtantsur): change to just 'raise'
-            if step_type == 'clean':
-                raise
-            else:
-                LOG.warning('Agent running on node %(node)s does not support '
-                            'in-band deploy steps: %(err)s. Support for old '
-                            'agents will be removed in the V release.',
-                            {'node': node.uuid, 'err': exc})
-                return
-
-        missing = set(['%s_steps' % step_type,
-                       'hardware_manager_version']).difference(agent_result)
-        if missing:
+        if missing := {
+            f'{step_type}_steps',
+            'hardware_manager_version',
+        }.difference(agent_result):
             _raise(step_type, _(
                 'agent get_%(type)s_steps for node %(node)s returned an '
                 'invalid result. Keys: %(keys)s are missing from result: '
@@ -816,11 +806,9 @@ class AgentBaseMixin(object):
         # agent_result['clean_steps'] looks like
         # {'HardwareManager': [{step1},{steps2}...], ...}
         steps = collections.defaultdict(list)
-        for step_list in agent_result['%s_steps' % step_type].values():
+        for step_list in agent_result[f'{step_type}_steps'].values():
             for step in step_list:
-                missing = set(['interface', 'step', 'priority']).difference(
-                    step)
-                if missing:
+                if missing := {'interface', 'step', 'priority'}.difference(step):
                     _raise(step_type, _(
                         'agent get_%(type)s_steps for node %(node)s returned '
                         'an invalid %(type)s step. Keys: %(keys)s are missing '
@@ -836,10 +824,10 @@ class AgentBaseMixin(object):
         # Save hardware manager version, steps, and date
         node.set_driver_internal_info('hardware_manager_version',
                                       agent_result['hardware_manager_version'])
-        node.set_driver_internal_info('agent_cached_%s_steps' % step_type,
-                                      dict(steps))
+        node.set_driver_internal_info(f'agent_cached_{step_type}_steps', dict(steps))
         node.timestamp_driver_internal_info(
-            'agent_cached_%s_steps_refreshed' % step_type)
+            f'agent_cached_{step_type}_steps_refreshed'
+        )
         node.save()
         LOG.debug('Refreshed agent %(type)s step cache for node %(node)s: '
                   '%(steps)s', {'node': node.uuid, 'steps': steps,
@@ -1333,10 +1321,10 @@ class AgentDeployMixin(HeartbeatMixin, AgentOobStepsMixin):
                 log_and_raise_deployment_error(task, msg)
 
         try:
-            persistent = True
-            if node.driver_info.get('force_persistent_boot_device',
-                                    'Default') == 'Never':
-                persistent = False
+            persistent = (
+                node.driver_info.get('force_persistent_boot_device', 'Default')
+                != 'Never'
+            )
             deploy_utils.try_set_boot_device(task, boot_devices.DISK,
                                              persistent=persistent)
         except Exception as e:

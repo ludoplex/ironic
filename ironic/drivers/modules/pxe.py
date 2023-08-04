@@ -95,15 +95,11 @@ class PXEAnacondaDeploy(agent_base.AgentBaseMixin, agent_base.HeartbeatMixin,
 
     def deploy_has_started(self, task):
         agent_status = task.node.driver_internal_info.get('agent_status')
-        if agent_status == 'start':
-            return True
-        return False
+        return agent_status == 'start'
 
     def deploy_is_done(self, task):
         agent_status = task.node.driver_internal_info.get('agent_status')
-        if agent_status == 'end':
-            return True
-        return False
+        return agent_status == 'end'
 
     def should_manage_boot(self, task):
         if task.node.provision_state in (

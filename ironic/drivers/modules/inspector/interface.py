@@ -52,11 +52,7 @@ def _get_callback_endpoint(client):
               'callback URL') % parts.hostname)
 
     # NOTE(dtantsur): the IPA side is quite picky about the exact format.
-    if parts.path.endswith('/v1'):
-        add = '/continue'
-    else:
-        add = '/v1/continue'
-
+    add = '/continue' if parts.path.endswith('/v1') else '/v1/continue'
     return urlparse.urlunsplit((parts.scheme, parts.netloc,
                                 parts.path.rstrip('/') + add,
                                 parts.query, parts.fragment))
@@ -321,8 +317,7 @@ def _check_status(task):
 
 
 def _clean_up(task):
-    errors = _tear_down_managed_boot(task)
-    if errors:
+    if errors := _tear_down_managed_boot(task):
         errors = ', '.join(errors)
         LOG.error('Inspection clean up failed for node %(uuid)s: %(err)s',
                   {'uuid': task.node.uuid, 'err': errors})

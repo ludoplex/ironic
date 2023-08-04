@@ -14,6 +14,7 @@
 iBMC Driver common utils
 """
 
+
 import functools
 import os
 
@@ -54,8 +55,7 @@ OPTIONAL_PROPERTIES = {
                         'directory. Defaults to True. Optional.'),
 }
 
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
+COMMON_PROPERTIES = REQUIRED_PROPERTIES | OPTIONAL_PROPERTIES
 
 
 def parse_driver_info(node):
@@ -67,9 +67,9 @@ def parse_driver_info(node):
     :raises: MissingParameterValue on missing parameter(s)
     """
     driver_info = node.driver_info or {}
-    missing_info = [key for key in REQUIRED_PROPERTIES
-                    if not driver_info.get(key)]
-    if missing_info:
+    if missing_info := [
+        key for key in REQUIRED_PROPERTIES if not driver_info.get(key)
+    ]:
         raise exception.MissingParameterValue(_(
             'Missing the following iBMC properties in node '
             '%(node)s driver_info: %(info)s') % {'node': node.uuid,
@@ -78,7 +78,7 @@ def parse_driver_info(node):
     # Validate the iBMC address
     address = driver_info['ibmc_address']
     if '://' not in address:
-        address = 'https://%s' % address
+        address = f'https://{address}'
 
     parsed = netutils.urlsplit(address)
     if not parsed.netloc:

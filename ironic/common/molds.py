@@ -107,9 +107,7 @@ def _get_auth_header(task):
     """
     auth_header = None
     if CONF.molds.storage == 'swift':
-        # TODO(ajya) Need to update to use Swift client and context session
-        auth_token = swift.get_swift_session().get_token()
-        if auth_token:
+        if auth_token := swift.get_swift_session().get_token():
             auth_header = {'X-Auth-Token': auth_token}
         else:
             raise exception.IronicException(
@@ -117,8 +115,12 @@ def _get_auth_header(task):
                   '%s') % task.node.uuid)
     elif CONF.molds.storage == 'http':
         if CONF.molds.user and CONF.molds.password:
-            auth_header = {'Authorization': 'Basic %s'
-                           % base64.encode_as_text(
-                               '%s:%s' % (CONF.molds.user,
-                                          CONF.molds.password))}
+            auth_header = {
+                'Authorization': (
+                    'Basic %s'
+                    % base64.encode_as_text(
+                        f'{CONF.molds.user}:{CONF.molds.password}'
+                    )
+                )
+            }
     return auth_header

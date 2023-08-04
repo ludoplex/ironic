@@ -14,8 +14,7 @@
 
 GIB = 1 << 30
 
-EXTRA_PARAMS = set(['wwn', 'serial', 'wwn_with_extension',
-                    'wwn_vendor_extension'])
+EXTRA_PARAMS = {'wwn', 'serial', 'wwn_with_extension', 'wwn_vendor_extension'}
 
 IGNORE_DEVICES = ['sr', 'loop', 'mem', 'fd']
 
@@ -58,7 +57,7 @@ def root_hint(hints, devices):
         else:
             # If multiple hints are specified, a device must satisfy all
             # the hints
-            dev_name = '/dev/' + device
+            dev_name = f'/dev/{device}'
             if name is None or name == dev_name:
                 hint = dev_name
                 break
@@ -75,24 +74,23 @@ def main():
         ),
         supports_check_mode=True)
 
-    hints = module.params['root_device_hints']
     devices = module.params['ansible_devices']
     devices_wwn = module.params['ansible_devices_wwn']
 
+    hints = module.params['root_device_hints']
     if not devices_wwn:
-        extra = set(hints) & EXTRA_PARAMS
-        if extra:
-            module.fail_json(msg='Extra hints (supported by additional ansible'
-                             ' module) are set but this information can not be'
-                             ' collected. Extra hints: %s' % ', '.join(extra))
+        if extra := set(hints) & EXTRA_PARAMS:
+            module.fail_json(
+                msg=f"Extra hints (supported by additional ansible module) are set but this information can not be collected. Extra hints: {', '.join(extra)}"
+            )
 
     devices_info = merge_devices_info(devices, devices_wwn or {})
     hint = root_hint(hints, devices_info)
 
     if hint is None:
-        module.fail_json(msg='Root device hints are set, but none of the '
-                         'devices satisfy them. Collected devices info: %s'
-                         % devices_info)
+        module.fail_json(
+            msg=f'Root device hints are set, but none of the devices satisfy them. Collected devices info: {devices_info}'
+        )
 
     ret_data = {'ansible_facts': {'ironic_root_device': hint}}
     module.exit_json(**ret_data)

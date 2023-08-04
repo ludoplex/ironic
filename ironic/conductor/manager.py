@@ -171,10 +171,6 @@ class ConductorManager(base_manager.BaseConductorManager):
                 "retired is True")
 
     @METRICS.timer('ConductorManager.update_node')
-    # No need to add these since they are subclasses of InvalidParameterValue:
-    #     InterfaceNotFoundInEntrypoint
-    #     IncompatibleInterface,
-    #     NoValidDefaultForInterface
     @messaging.expected_exceptions(exception.InvalidParameterValue,
                                    exception.NodeLocked,
                                    exception.InvalidState,
@@ -222,7 +218,7 @@ class ConductorManager(base_manager.BaseConductorManager):
         updating_driver = 'driver' in delta
         check_interfaces = updating_driver
         for iface in drivers_base.ALL_INTERFACES:
-            interface_field = '%s_interface' % iface
+            interface_field = f'{iface}_interface'
             if interface_field not in delta:
                 if updating_driver and reset_interfaces:
                     setattr(node_obj, interface_field, None)
@@ -1261,9 +1257,7 @@ class ConductorManager(base_manager.BaseConductorManager):
         :raises: NoFreeConductorWorker
         :raises: NodeInMaintenance
         """
-        with task_manager.acquire(context, node_id, shared=False,
-                                  purpose='provision action %s'
-                                  % action) as task:
+        with task_manager.acquire(context, node_id, shared=False, purpose=f'provision action {action}') as task:
             node = task.node
             if (action == states.VERBS['provide']
                     and node.provision_state == states.MANAGEABLE):
@@ -1455,8 +1449,8 @@ class ConductorManager(base_manager.BaseConductorManager):
             try:
                 # NOTE(dtantsur): start with a shared lock, upgrade if needed
                 with task_manager.acquire(context, node_uuid,
-                                          purpose='power state sync',
-                                          shared=True) as task:
+                                                      purpose='power state sync',
+                                                      shared=True) as task:
                     # NOTE(tenbrae): we should not acquire a lock on a node in
                     #             DEPLOYWAIT/CLEANWAIT, as this could cause
                     #             an error within a deploy ramdisk POSTing back
@@ -1468,9 +1462,9 @@ class ConductorManager(base_manager.BaseConductorManager):
                             or task.node.target_power_state
                             or task.node.reservation):
                         continue
-                    count = do_sync_power_state(
-                        task, self.power_state_sync_count[node_uuid])
-                    if count:
+                    if count := do_sync_power_state(
+                        task, self.power_state_sync_count[node_uuid]
+                    ):
                         self.power_state_sync_count[node_uuid] = count
                     else:
                         # don't bloat the dict with non-failing nodes
@@ -1886,7 +1880,7 @@ class ConductorManager(base_manager.BaseConductorManager):
         ret_dict = {}
         lock_purpose = 'driver interface validation'
         with task_manager.acquire(context, node_id, shared=True,
-                                  purpose=lock_purpose) as task:
+                                      purpose=lock_purpose) as task:
             # NOTE(sirushtim): the is_whole_disk_image variable is needed by
             # deploy drivers for doing their validate(). Since the deploy
             # isn't being done yet and the driver information could change in
@@ -1925,8 +1919,7 @@ class ConductorManager(base_manager.BaseConductorManager):
                         {'iface': iface_name, 'driver': task.node.driver,
                          'err': e, 'node': task.node.uuid})
 
-                ret_dict[iface_name] = {}
-                ret_dict[iface_name]['result'] = result
+                ret_dict[iface_name] = {'result': result}
                 if reason is not None:
                     ret_dict[iface_name]['reason'] = reason
         return ret_dict
@@ -2327,7 +2320,7 @@ class ConductorManager(base_manager.BaseConductorManager):
         LOG.debug("RPC update_port called for port %s.", port_uuid)
 
         with task_manager.acquire(context, port_obj.node_id,
-                                  purpose='port update') as task:
+                                      purpose='port update') as task:
             node = task.node
             # Only allow updating MAC addresses for active nodes if maintenance
             # mode is on.
@@ -2353,9 +2346,11 @@ class ConductorManager(base_manager.BaseConductorManager):
                                      states.INSPECTING,
                                      states.INSPECTWAIT,
                                      states.MANAGEABLE]
-            if (set(port_obj.obj_what_changed()) & connectivity_attr
-                    and not (node.provision_state in allowed_update_states
-                             or node.maintenance)):
+            if (
+                set(port_obj.obj_what_changed()) & connectivity_attr
+                and node.provision_state not in allowed_update_states
+                and not node.maintenance
+            ):
                 action = _("Port %(port)s can not have any connectivity "
                            "attributes (%(connect)s) updated unless "
                            "node %(node)s is in a %(allowed)s state "
@@ -2411,8 +2406,8 @@ class ConductorManager(base_manager.BaseConductorManager):
                   portgroup_uuid)
         lock_purpose = 'update portgroup'
         with task_manager.acquire(context,
-                                  portgroup_obj.node_id,
-                                  purpose=lock_purpose) as task:
+                                      portgroup_obj.node_id,
+                                      purpose=lock_purpose) as task:
             node = task.node
 
             if 'node_id' in portgroup_obj.obj_what_changed():
@@ -2435,13 +2430,9 @@ class ConductorManager(base_manager.BaseConductorManager):
                                   'node': node.uuid,
                                   'allowed': ', '.join(allowed_update_states)})
 
-                # NOTE(zhenguo): If portgroup update is modifying the
-                # portgroup-node association then there should not be
-                # any Port associated to the PortGroup, otherwise
-                # PortgroupNotEmpty exception is raised.
-                associated_ports = self.dbapi.get_ports_by_portgroup_id(
-                    portgroup_uuid)
-                if associated_ports:
+                if associated_ports := self.dbapi.get_ports_by_portgroup_id(
+                    portgroup_uuid
+                ):
                     action = _("Portgroup %(portgroup)s can not be associated "
                                "with node %(node)s because there are ports "
                                "associated with this portgroup.")
@@ -2577,9 +2568,9 @@ class ConductorManager(base_manager.BaseConductorManager):
             try:
                 lock_purpose = 'getting sensors data'
                 with task_manager.acquire(context,
-                                          node_uuid,
-                                          shared=True,
-                                          purpose=lock_purpose) as task:
+                                                      node_uuid,
+                                                      shared=True,
+                                                      purpose=lock_purpose) as task:
                     if task.node.maintenance:
                         LOG.debug('Skipping sending sensors data for node '
                                   '%s as it is in maintenance mode',
@@ -2594,7 +2585,7 @@ class ConductorManager(base_manager.BaseConductorManager):
                     # guise of ipmi.
                     ev_type = 'hardware.{driver}.metrics'.format(
                         driver=task.node.driver)
-                    message['event_type'] = ev_type + '.update'
+                    message['event_type'] = f'{ev_type}.update'
 
                     task.driver.management.validate(task)
                     sensors_data = task.driver.management.get_sensors_data(
@@ -2643,7 +2634,7 @@ class ConductorManager(base_manager.BaseConductorManager):
 
         try:
             ev_type = 'ironic.metrics'
-            message['event_type'] = ev_type + '.update'
+            message['event_type'] = f'{ev_type}.update'
             sensors_data = METRICS.get_metrics_data()
         except AttributeError:
             # TODO(TheJulia): Remove this at some point, but right now
@@ -2728,14 +2719,16 @@ class ConductorManager(base_manager.BaseConductorManager):
                data
         :returns: dict with unsupported sensor types removed
         """
-        allowed = set(x.lower() for x in
-                      CONF.sensor_data.data_types)
+        allowed = {x.lower() for x in CONF.sensor_data.data_types}
 
         if 'all' in allowed:
             return sensors_data
 
-        return dict((sensor_type, sensor_value) for (sensor_type, sensor_value)
-                    in sensors_data.items() if sensor_type.lower() in allowed)
+        return {
+            sensor_type: sensor_value
+            for (sensor_type, sensor_value) in sensors_data.items()
+            if sensor_type.lower() in allowed
+        }
 
     @METRICS.timer('ConductorManager.set_boot_device')
     @messaging.expected_exceptions(exception.NodeLocked,
@@ -3336,7 +3329,7 @@ class ConductorManager(base_manager.BaseConductorManager):
         oldobj = objinst.obj_clone()
         result = self._object_dispatch(objinst, objmethod, context,
                                        args, kwargs)
-        updates = dict()
+        updates = {}
         # NOTE(danms): Diff the object with the one passed to us and
         # generate a list of changes to forward back
         for name, field in objinst.fields.items():
@@ -3366,12 +3359,16 @@ class ConductorManager(base_manager.BaseConductorManager):
         :returns: The downgraded instance of objinst
         """
         target = object_versions[objinst.obj_name()]
-        LOG.debug('Backporting %(obj)s to %(ver)s with versions %(manifest)s',
-                  {'obj': objinst.obj_name(),
-                   'ver': target,
-                   'manifest': ','.join(
-                       ['%s=%s' % (name, ver)
-                        for name, ver in object_versions.items()])})
+        LOG.debug(
+            'Backporting %(obj)s to %(ver)s with versions %(manifest)s',
+            {
+                'obj': objinst.obj_name(),
+                'ver': target,
+                'manifest': ','.join(
+                    [f'{name}={ver}' for name, ver in object_versions.items()]
+                ),
+            },
+        )
         return objinst.obj_to_primitive(target_version=target,
                                         version_manifest=object_versions)
 
@@ -3638,7 +3635,7 @@ class ConductorManager(base_manager.BaseConductorManager):
                 raise exception.ConcurrentActionLimit(
                     task_type=action)
 
-        if action == 'unprovisioning' or action == 'cleaning':
+        if action in ['unprovisioning', 'cleaning']:
             # NOTE(TheJulia): This also checks for the deleting state
             # which is super transitory, *but* you can get a node into
             # the state. So in order to guard against a DoS attack, we
@@ -3655,11 +3652,10 @@ class ConductorManager(base_manager.BaseConductorManager):
 
 @METRICS.timer('get_vendor_passthru_metadata')
 def get_vendor_passthru_metadata(route_dict):
-    d = {}
-    for method, metadata in route_dict.items():
-        # 'func' is the vendor method reference, ignore it
-        d[method] = {k: metadata[k] for k in metadata if k != 'func'}
-    return d
+    return {
+        method: {k: metadata[k] for k in metadata if k != 'func'}
+        for method, metadata in route_dict.items()
+    }
 
 
 @task_manager.require_exclusive_lock

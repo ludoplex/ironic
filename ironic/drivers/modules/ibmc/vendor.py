@@ -104,5 +104,4 @@ class IBMCVendor(base.VendorInterface):
         driver_info = utils.parse_driver_info(task.node)
         with ibmc_client.connect(**driver_info) as conn:
             controllers = conn.system.storage.list()
-            summaries = [ctrl.summary() for ctrl in controllers]
-            return summaries
+            return [ctrl.summary() for ctrl in controllers]

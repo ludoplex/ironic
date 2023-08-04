@@ -14,6 +14,7 @@
 iBMC and Ironic constants mapping
 """
 
+
 from oslo_utils import importutils
 
 from ironic.common import boot_devices
@@ -21,9 +22,7 @@ from ironic.common import boot_modes
 from ironic.common import states
 from ironic.drivers.modules.ibmc import utils
 
-constants = importutils.try_import('ibmc_client.constants')
-
-if constants:
+if constants := importutils.try_import('ibmc_client.constants'):
     # Set power state mapping
     SET_POWER_STATE_MAP = {
         states.POWER_ON: constants.RESET_ON,

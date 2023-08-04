@@ -69,10 +69,11 @@ def duplicate_steps(name, value):
     # specified at most once.
     counter = collections.Counter((step['interface'], step['step'])
                                   for step in value['steps'])
-    duplicates = {key for key, count in counter.items() if count > 1}
-    if duplicates:
-        duplicates = {"interface: %s, step: %s" % (interface, step)
-                      for interface, step in duplicates}
+    if duplicates := {key for key, count in counter.items() if count > 1}:
+        duplicates = {
+            f"interface: {interface}, step: {step}"
+            for interface, step in duplicates
+        }
         err = _("Duplicate deploy steps. A deploy template cannot have "
                 "multiple deploy steps with the same interface and step. "
                 "Duplicates: %s") % "; ".join(duplicates)

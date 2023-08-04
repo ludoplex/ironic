@@ -56,9 +56,9 @@ def list_convert_with_links(items, item_name, limit, url, fields=None,
     items_dict = {
         item_name: items
     }
-    next_uuid = get_next(
-        items, limit, url=url, fields=fields, key_field=key_field, **kwargs)
-    if next_uuid:
+    if next_uuid := get_next(
+        items, limit, url=url, fields=fields, key_field=key_field, **kwargs
+    ):
         items_dict['next'] = next_uuid
 
     if sanitize_func:
@@ -77,12 +77,9 @@ def get_next(collection, limit, url, key_field='uuid', **kwargs):
     if not has_next(collection, limit):
         return None
 
-    fields = kwargs.pop('fields', None)
-    # NOTE(saga): If fields argument is present in kwargs and not None. It
-    # is a list so convert it into a comma seperated string.
-    if fields:
+    if fields := kwargs.pop('fields', None):
         kwargs['fields'] = ','.join(fields)
-    q_args = ''.join(['%s=%s&' % (key, kwargs[key]) for key in kwargs])
+    q_args = ''.join([f'{key}={kwargs[key]}&' for key in kwargs])
 
     last_item = collection[-1]
     # handle items which are either objects or dicts

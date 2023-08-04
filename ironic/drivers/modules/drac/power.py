@@ -15,6 +15,7 @@
 DRAC power interface
 """
 
+
 import time
 
 from ironic_lib import metrics_utils
@@ -44,7 +45,7 @@ if drac_constants:
         drac_constants.REBOOT: states.REBOOT
     }
 
-    REVERSE_POWER_STATES = dict((v, k) for (k, v) in POWER_STATES.items())
+    REVERSE_POWER_STATES = {v: k for (k, v) in POWER_STATES.items()}
 
 POWER_STATE_TRIES = 15
 POWER_STATE_SLEEP = 2

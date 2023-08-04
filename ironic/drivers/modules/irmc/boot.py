@@ -16,6 +16,7 @@
 iRMC Boot Driver
 """
 
+
 import os
 import shutil
 import tempfile
@@ -85,7 +86,7 @@ OPTIONAL_PROPERTIES = {
 }
 
 COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(driver_utils.OPTIONAL_PROPERTIES)
+COMMON_PROPERTIES |= driver_utils.OPTIONAL_PROPERTIES
 COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
 
 
@@ -140,12 +141,9 @@ def _parse_driver_info(node, mode='deploy'):
     :raises: InvalidParameterValue, if any of the parameters have invalid
         value.
     """
-    deploy_info = {}
-
     image_iso = driver_utils.get_agent_iso(node, mode,
                                            deprecated_prefix='irmc')
-    deploy_info[f'{mode}_iso'] = image_iso
-
+    deploy_info = {f'{mode}_iso': image_iso}
     error_msg = (_("Error validating iRMC virtual media for %s. Some "
                    "parameters were missing in node's driver_info") % mode)
     deploy_utils.check_for_missing_params(deploy_info, error_msg)
@@ -187,10 +185,9 @@ def _parse_instance_info(node):
     """
     deploy_info = {}
 
-    boot_iso = driver_utils.get_field(node, 'boot_iso',
-                                      deprecated_prefix='irmc',
-                                      collection='instance_info')
-    if boot_iso:
+    if boot_iso := driver_utils.get_field(
+        node, 'boot_iso', deprecated_prefix='irmc', collection='instance_info'
+    ):
         deploy_info['boot_iso'] = boot_iso
 
         if _is_image_href_ordinary_file_name(boot_iso):
@@ -221,7 +218,7 @@ def _parse_deploy_info(node):
         value.
     """
     deploy_info = {}
-    deploy_info.update(deploy_utils.get_image_instance_info(node))
+    deploy_info |= deploy_utils.get_image_instance_info(node)
     deploy_info.update(_parse_driver_info(node))
     deploy_info.update(_parse_instance_info(node))
 
@@ -267,7 +264,7 @@ def _get_iso_name(node, label):
     :param node: the node for which ISO file name is to be provided.
     :param label: a string used as a base name for the ISO file.
     """
-    return "%s-%s.iso" % (label, node.uuid)
+    return f"{label}-{node.uuid}.iso"
 
 
 def _prepare_boot_iso(task, root_uuid):
@@ -336,7 +333,7 @@ def _get_floppy_image_name(node):
 
     :param node: the node for which image name is to be provided.
     """
-    return "image-%s.img" % node.uuid
+    return f"image-{node.uuid}.img"
 
 
 def _prepare_floppy_image(task, params):
@@ -983,18 +980,14 @@ class IRMCVirtualMediaBoot(base.BootInterface, IRMCVolumeBootMixIn):
         # with virtual media boot, we should generate a token!
         manager_utils.add_secret_token(task.node, pregenerated=True)
         ramdisk_params['ipa-agent-token'] = \
-            task.node.driver_internal_info['agent_secret_token']
+                task.node.driver_internal_info['agent_secret_token']
         task.node.save()
 
         deploy_nic_mac = deploy_utils.get_single_nic_with_vif_port_id(task)
         if deploy_nic_mac is not None:
             ramdisk_params['BOOTIF'] = deploy_nic_mac
 
-        if task.node.provision_state == states.RESCUING:
-            mode = 'rescue'
-        else:
-            mode = 'deploy'
-
+        mode = 'rescue' if task.node.provision_state == states.RESCUING else 'deploy'
         _setup_vmedia(task, mode, ramdisk_params)
 
     @METRICS.timer('IRMCVirtualMediaBoot.clean_up_ramdisk')

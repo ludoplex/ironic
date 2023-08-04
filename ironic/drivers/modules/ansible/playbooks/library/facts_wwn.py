@@ -31,7 +31,7 @@ def get_devices_wwn(devices, module):
 
     dev_dict = {}
     for device in devices:
-        name = '/dev/' + device
+        name = f'/dev/{device}'
         try:
             udev = pyudev.Devices.from_device_file(context, name)
         except (ValueError, EnvironmentError, pyudev.DeviceNotFoundError) as e:
@@ -41,7 +41,7 @@ def get_devices_wwn(devices, module):
 
         dev_dict[device] = {}
         for key, udev_key in COLLECT_INFO:
-            candidate = udev.get('ID_%s' % udev_key)
+            candidate = udev.get(f'ID_{udev_key}')
             if candidate:
                 candidate = candidate.lower()
             dev_dict[device][key] = candidate

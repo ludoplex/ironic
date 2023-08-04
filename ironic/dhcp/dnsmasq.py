@@ -81,12 +81,10 @@ class DnsmasqDHCPApi(base.BaseDHCP):
                 f.write(entry)
 
     def _opt_file_path(self, node):
-        return os.path.join(CONF.dnsmasq.dhcp_optsdir,
-                            'ironic-{}.conf'.format(node.uuid))
+        return os.path.join(CONF.dnsmasq.dhcp_optsdir, f'ironic-{node.uuid}.conf')
 
     def _host_file_path(self, mac):
-        return os.path.join(CONF.dnsmasq.dhcp_hostsdir,
-                            'ironic-{}.conf'.format(mac))
+        return os.path.join(CONF.dnsmasq.dhcp_hostsdir, f'ironic-{mac}.conf')
 
     def _pxe_enabled_macs(self, ports):
         for port in ports:
@@ -104,7 +102,7 @@ class DnsmasqDHCPApi(base.BaseDHCP):
         macs = set(self._pxe_enabled_macs(task.ports))
         addresses = []
         with open(lease_path, 'r') as f:
-            for line in f.readlines():
+            for line in f:
                 lease = line.split()
                 if lease[1] in macs:
                     addresses.append(lease[2])

@@ -23,6 +23,7 @@ models.
 
 """
 
+
 import abc
 import time
 
@@ -38,8 +39,7 @@ from ironic.conductor import task_manager
 from ironic.conf import CONF
 from ironic.drivers import base
 
-pysnmp = importutils.try_import('pysnmp')
-if pysnmp:
+if pysnmp := importutils.try_import('pysnmp'):
     from pysnmp import error as snmp_error
     from pysnmp import hlapi as snmp
 
@@ -51,15 +51,12 @@ if pysnmp:
 
     # available since pysnmp 4.4.1
     try:
-        snmp_auth_protocols.update(
-            {
-                'sha224': snmp.usmHMAC128SHA224AuthProtocol,
-                'sha256': snmp.usmHMAC192SHA256AuthProtocol,
-                'sha384': snmp.usmHMAC256SHA384AuthProtocol,
-                'sha512': snmp.usmHMAC384SHA512AuthProtocol,
-
-            }
-        )
+        snmp_auth_protocols |= {
+            'sha224': snmp.usmHMAC128SHA224AuthProtocol,
+            'sha256': snmp.usmHMAC192SHA256AuthProtocol,
+            'sha384': snmp.usmHMAC256SHA384AuthProtocol,
+            'sha512': snmp.usmHMAC384SHA512AuthProtocol,
+        }
 
     except AttributeError:
         pass
@@ -75,13 +72,10 @@ if pysnmp:
 
     # available since pysnmp 4.4.3
     try:
-        snmp_priv_protocols.update(
-            {
-                'aes192blmt': snmp.usmAesBlumenthalCfb192Protocol,
-                'aes256blmt': snmp.usmAesBlumenthalCfb256Protocol,
-
-            }
-        )
+        snmp_priv_protocols |= {
+            'aes192blmt': snmp.usmAesBlumenthalCfb192Protocol,
+            'aes256blmt': snmp.usmAesBlumenthalCfb256Protocol,
+        }
 
     except AttributeError:
         pass
@@ -178,9 +172,9 @@ DEPRECATED_PROPERTIES = {
         % {"v3": SNMP_V3},
 }
 
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
-COMMON_PROPERTIES.update(DEPRECATED_PROPERTIES)
+COMMON_PROPERTIES = (
+    REQUIRED_PROPERTIES | OPTIONAL_PROPERTIES | DEPRECATED_PROPERTIES
+)
 
 
 class SNMPClient(object):
@@ -241,12 +235,11 @@ class SNMPClient(object):
                 privProtocol=self.priv_proto
             )
 
-        else:
-            mp_model = 1 if self.version == SNMP_V2C else 0
-            return snmp.CommunityData(
-                self.write_community if write_mode else self.read_community,
-                mpModel=mp_model
-            )
+        mp_model = 1 if self.version == SNMP_V2C else 0
+        return snmp.CommunityData(
+            self.write_community if write_mode else self.read_community,
+            mpModel=mp_model
+        )
 
     def _get_transport(self):
         """Return the transport target for an SNMP request.
@@ -539,9 +532,7 @@ class SNMPDriverBase(object, metaclass=abc.ABCMeta):
             return states.ERROR
         time.sleep(CONF.snmp.reboot_delay)
         power_result = self.power_on()
-        if power_result != states.POWER_ON:
-            return states.ERROR
-        return power_result
+        return states.ERROR if power_result != states.POWER_ON else power_result
 
 
 class SNMPDriverSimple(SNMPDriverBase):
@@ -587,18 +578,16 @@ class SNMPDriverSimple(SNMPDriverBase):
 
         # Translate the state to an Ironic power state.
         if state == self.value_power_on:
-            power_state = states.POWER_ON
+            return states.POWER_ON
         elif state == self.value_power_off:
-            power_state = states.POWER_OFF
+            return states.POWER_OFF
         else:
             LOG.warning("SNMP PDU %(addr)s outlet %(outlet)s: "
                         "unrecognised power state %(state)s.",
                         {'addr': self.snmp_info['address'],
                          'outlet': self.snmp_info['outlet'],
                          'state': state})
-            power_state = states.ERROR
-
-        return power_state
+            return states.ERROR
 
     def _snmp_power_on(self):
         value = snmp.Integer(self.value_power_on)
@@ -760,18 +749,16 @@ class SNMPDriverEatonPower(SNMPDriverBase):
 
         # Translate the state to an Ironic power state.
         if state in (self.status_on, self.status_pending_off):
-            power_state = states.POWER_ON
+            return states.POWER_ON
         elif state in (self.status_off, self.status_pending_on):
-            power_state = states.POWER_OFF
+            return states.POWER_OFF
         else:
             LOG.warning("Eaton Power SNMP PDU %(addr)s outlet %(outlet)s: "
                         "unrecognised power state %(state)s.",
                         {'addr': self.snmp_info['address'],
                          'outlet': self.snmp_info['outlet'],
                          'state': state})
-            power_state = states.ERROR
-
-        return power_state
+            return states.ERROR
 
     def _snmp_power_on(self):
         oid = self._snmp_oid(self.oid_poweron)
@@ -840,8 +827,7 @@ class SNMPDriverServerTechSentry3(SNMPDriverBase):
         """
 
         outlet = self.snmp_info['outlet']
-        full_oid = self.oid_base + oid + self.oid_tower_infeed_idx + (outlet,)
-        return full_oid
+        return self.oid_base + oid + self.oid_tower_infeed_idx + (outlet,)
 
     def _snmp_power_state(self):
         oid = self._snmp_oid(self.oid_power_status)
@@ -849,9 +835,9 @@ class SNMPDriverServerTechSentry3(SNMPDriverBase):
 
         # Translate the state to an Ironic power state.
         if state in (self.status_on, self.status_off_wait):
-            power_state = states.POWER_ON
+            return states.POWER_ON
         elif state in (self.status_off, self.status_on_wait):
-            power_state = states.POWER_OFF
+            return states.POWER_OFF
         else:
             LOG.warning("SeverTech Sentry3 PDU %(addr)s oid %(oid) outlet "
                         "%(outlet)s: unrecognised power state %(state)s.",
@@ -859,9 +845,7 @@ class SNMPDriverServerTechSentry3(SNMPDriverBase):
                          'oid': oid,
                          'outlet': self.snmp_info['outlet'],
                          'state': state})
-            power_state = states.ERROR
-
-        return power_state
+            return states.ERROR
 
     def _snmp_power_on(self):
         oid = self._snmp_oid(self.oid_power_action)
@@ -929,8 +913,7 @@ class SNMPDriverServerTechSentry4(SNMPDriverBase):
         """
 
         outlet = self.snmp_info['outlet']
-        full_oid = self.oid_base + oid + self.oid_tower_infeed_idx + (outlet,)
-        return full_oid
+        return self.oid_base + oid + self.oid_tower_infeed_idx + (outlet,)
 
     def _snmp_power_state(self):
         oid = self._snmp_oid(self.oid_power_status)
@@ -938,9 +921,9 @@ class SNMPDriverServerTechSentry4(SNMPDriverBase):
 
         # Translate the state to an Ironic power state.
         if state in (self.status_on, self.status_pendOn, self.idleOn):
-            power_state = states.POWER_ON
+            return states.POWER_ON
         elif state in (self.status_off, self.status_pendOff):
-            power_state = states.POWER_OFF
+            return states.POWER_OFF
         else:
             LOG.warning("ServerTech Sentry4 PDU %(addr)s oid %(oid)s outlet "
                         "%(outlet)s: unrecognised power state %(state)s.",
@@ -948,9 +931,7 @@ class SNMPDriverServerTechSentry4(SNMPDriverBase):
                          'oid': oid,
                          'outlet': self.snmp_info['outlet'],
                          'state': state})
-            power_state = states.ERROR
-
-        return power_state
+            return states.ERROR
 
     def _snmp_power_on(self):
         oid = self._snmp_oid(self.oid_power_action)
@@ -1026,8 +1007,7 @@ class SNMPDriverRaritanPDU2(SNMPDriverBase):
         """
 
         outlet = self.snmp_info['outlet']
-        full_oid = self.oid_base + oid + self.oid_tower_infeed_idx + (outlet,)
-        return full_oid
+        return self.oid_base + oid + self.oid_tower_infeed_idx + (outlet,)
 
     def _snmp_power_state(self):
         oid = self._snmp_oid(self.oid_power_status)
@@ -1035,9 +1015,9 @@ class SNMPDriverRaritanPDU2(SNMPDriverBase):
 
         # Translate the state to an Ironic power state.
         if state == self.status_on:
-            power_state = states.POWER_ON
+            return states.POWER_ON
         elif state == self.status_off:
-            power_state = states.POWER_OFF
+            return states.POWER_OFF
         else:
             LOG.warning("Raritan PDU2 PDU %(addr)s oid %(oid)s outlet "
                         "%(outlet)s: unrecognised power state %(state)s.",
@@ -1045,9 +1025,7 @@ class SNMPDriverRaritanPDU2(SNMPDriverBase):
                          'oid': oid,
                          'outlet': self.snmp_info['outlet'],
                          'state': state})
-            power_state = states.ERROR
-
-        return power_state
+            return states.ERROR
 
     def _snmp_power_on(self):
         oid = self._snmp_oid(self.oid_power_action)
@@ -1100,8 +1078,7 @@ class SNMPDriverVertivGeistPDU(SNMPDriverBase):
         """
 
         outlet = self.snmp_info['outlet']
-        full_oid = self.oid_base + oid + (outlet,)
-        return full_oid
+        return self.oid_base + oid + (outlet,)
 
     def _snmp_power_state(self):
         oid = self._snmp_oid(self.oid_power_status)
@@ -1109,9 +1086,9 @@ class SNMPDriverVertivGeistPDU(SNMPDriverBase):
 
         # Translate the state to an Ironic power state.
         if state in (self.on, self.on2off):
-            power_state = states.POWER_ON
+            return states.POWER_ON
         elif state in (self.off, self.off2on):
-            power_state = states.POWER_OFF
+            return states.POWER_OFF
         else:
             LOG.warning("Vertiv Geist PDU %(addr)s oid %(oid)s outlet "
                         "%(outlet)s: unrecognised power state %(state)s.",
@@ -1119,9 +1096,7 @@ class SNMPDriverVertivGeistPDU(SNMPDriverBase):
                          'oid': oid,
                          'outlet': self.snmp_info['outlet'],
                          'state': state})
-            power_state = states.ERROR
-
-        return power_state
+            return states.ERROR
 
     def _snmp_power_on(self):
         oid = self._snmp_oid(self.oid_power_action)
@@ -1186,8 +1161,7 @@ class SNMPDriverAuto(SNMPDriverBase):
 
     @retry_on_outdated_cache
     def _snmp_power_state(self):
-        current_power_state = self.driver._snmp_power_state()
-        return current_power_state
+        return self.driver._snmp_power_state()
 
     @retry_on_outdated_cache
     def _snmp_power_on(self):
@@ -1222,16 +1196,13 @@ DRIVER_CLASSES = {
 
 
 def _parse_driver_info_snmpv3_user(node, info):
-    snmp_info = {}
-
     if 'snmp_user' not in info and 'snmp_security' not in info:
         raise exception.MissingParameterValue(_(
             "SNMP driver requires `driver_info/snmp_user` to be set in "
             "node %(node)s configuration for SNMP version %(ver)s.") %
             {'node': node.uuid, 'ver': SNMP_V3})
 
-    snmp_info['user'] = info.get('snmp_user', info.get('snmp_security'))
-
+    snmp_info = {'user': info.get('snmp_user', info.get('snmp_security'))}
     if 'snmp_security' in info:
         LOG.warning("The `driver_info/snmp_security` parameter is deprecated "
                     "in favor of `driver_info/snmp_user` parameter. Please "
@@ -1351,16 +1322,15 @@ def _parse_driver_info(node):
     :raises: InvalidParameterValue if any parameters are invalid.
     """
     info = node.driver_info or {}
-    missing_info = [key for key in REQUIRED_PROPERTIES if not info.get(key)]
-    if missing_info:
+    if missing_info := [
+        key for key in REQUIRED_PROPERTIES if not info.get(key)
+    ]:
         raise exception.MissingParameterValue(_(
             "SNMP driver requires the following parameters to be set in "
             "node's driver_info: %s.") % missing_info)
 
-    snmp_info = {}
+    snmp_info = {'driver': info['snmp_driver']}
 
-    # Validate PDU driver type
-    snmp_info['driver'] = info['snmp_driver']
     if snmp_info['driver'] not in DRIVER_CLASSES:
         raise exception.InvalidParameterValue(_(
             "SNMPPowerDriver: unknown driver: '%s'") % snmp_info['driver'])
@@ -1400,7 +1370,7 @@ def _parse_driver_info(node):
         snmp_info['write_community'] = write_community
 
     elif snmp_info['version'] == SNMP_V3:
-        snmp_info.update(_parse_driver_info_snmpv3_user(node, info))
+        snmp_info |= _parse_driver_info_snmpv3_user(node, info)
         snmp_info.update(_parse_driver_info_snmpv3_crypto(node, info))
         snmp_info.update(_parse_driver_info_snmpv3_context(node, info))
 

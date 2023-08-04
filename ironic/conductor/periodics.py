@@ -118,10 +118,7 @@ def node_periodic(purpose, spacing, enabled=True, filters=None,
                               if isinstance(self, driver_base.BaseInterface)
                               else None)
 
-            if callable(limit):
-                local_limit = limit()
-            else:
-                local_limit = limit
+            local_limit = limit() if callable(limit) else limit
             assert local_limit is None or local_limit > 0
             node_count = 0
             nodes = manager.iter_nodes(filters=filters,
@@ -130,10 +127,7 @@ def node_periodic(purpose, spacing, enabled=True, filters=None,
                 node_count += 1
                 if predicate is not None:
                     node = node_type(node_uuid, *other)
-                    if accepts_manager:
-                        result = predicate(node, manager)
-                    else:
-                        result = predicate(node)
+                    result = predicate(node, manager) if accepts_manager else predicate(node)
                     if not result:
                         continue
 

@@ -159,8 +159,7 @@ class ImageHandler(object):
         parsed_url = urlparse.urlparse(url)
         parsed_qs = urlparse.parse_qsl(parsed_url.query)
 
-        has_filename = [x for x in parsed_qs if x[0].lower() == 'filename']
-        if has_filename:
+        if has_filename := [x for x in parsed_qs if x[0].lower() == 'filename']:
             return url
 
         parsed_qs.append(('filename', filename))
@@ -258,10 +257,7 @@ def _get_name(node, prefix='', suffix=''):
 
     :param node: the node for which image name is to be provided.
     """
-    if prefix:
-        name = "%s-%s" % (prefix, node.uuid)
-    else:
-        name = node.uuid
+    name = f"{prefix}-{node.uuid}" if prefix else node.uuid
     return name + suffix
 
 
@@ -356,13 +352,12 @@ def prepare_configdrive_image(task, content):
                 images.fetch_into(task.context, content, tmpfile2)
                 tmpfile2.flush()
 
-                if utils.file_mime_type(tmpfile2.name) == "text/plain":
-                    tmpfile2.seek(0)
-                    base64.decode(tmpfile2, comp_tmpfile_obj)
-                else:
+                if utils.file_mime_type(tmpfile2.name) != "text/plain":
                     # A binary image, use it as it is.
                     return prepare_disk_image(task, tmpfile2.name,
                                               prefix='configdrive')
+                tmpfile2.seek(0)
+                base64.decode(tmpfile2, comp_tmpfile_obj)
         else:
             comp_tmpfile_obj.write(base64.b64decode(content))
         comp_tmpfile_obj.seek(0)
@@ -597,9 +592,9 @@ def prepare_deploy_iso(task, params, mode, d_info):
     :raises: ImageCreationFailed, if creating ISO image failed.
     """
 
-    kernel_str = '%s_kernel' % mode
-    ramdisk_str = '%s_ramdisk' % mode
-    iso_str = '%s_iso' % mode
+    kernel_str = f'{mode}_kernel'
+    ramdisk_str = f'{mode}_ramdisk'
+    iso_str = f'{mode}_iso'
     bootloader_str = 'bootloader'
 
     kernel_href = _find_param(kernel_str, d_info)
@@ -622,8 +617,7 @@ def prepare_deploy_iso(task, params, mode, d_info):
         inject_files[_TLS_CONFIG_TEMPLATE.encode('utf-8')] = \
             'etc/ironic-python-agent.d/ironic-tls.conf'
 
-    network_data = task.driver.network.get_node_network_data(task)
-    if network_data:
+    if network_data := task.driver.network.get_node_network_data(task):
         LOG.debug('Injecting custom network data for node %s',
                   task.node.uuid)
         network_data = json.dumps(network_data, indent=2).encode('utf-8')

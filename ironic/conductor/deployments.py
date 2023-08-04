@@ -92,7 +92,7 @@ def start_deploy(task, manager, configdrive=None, event='deploy',
                        'uuid': node.uuid})
             node.set_driver_internal_info('automatic_lessee', True)
             node.lessee = project
-        elif project and node.lessee is not None:
+        elif project:
             # Since the model is a bit of a matrix and we're largely
             # just empowering operators, lets at least log a warning
             # since they may need to remedy something here. Or maybe
@@ -409,7 +409,7 @@ def continue_node_deploy(task):
 
 def _get_configdrive_obj_name(node):
     """Generate the object name for the config drive."""
-    return 'configdrive-%s' % node.uuid
+    return f'configdrive-{node.uuid}'
 
 
 def _store_configdrive(node, configdrive):

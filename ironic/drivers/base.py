@@ -179,9 +179,8 @@ class BareDriver(object):
 
         properties = {}
         for iface_name in self.all_interfaces:
-            iface = getattr(self, iface_name, None)
-            if iface:
-                properties.update(iface.get_properties())
+            if iface := getattr(self, iface_name, None):
+                properties |= iface.get_properties()
         return properties
 
 
@@ -1356,10 +1355,10 @@ class RAIDInterface(BaseInterface):
         :raises: InvalidParameterValue, if the RAID configuration is invalid.
         :raises: MissingParameterValue, if some parameters are missing.
         """
-        target_raid_config = task.node.target_raid_config
-        if not target_raid_config:
+        if target_raid_config := task.node.target_raid_config:
+            self.validate_raid_config(task, target_raid_config)
+        else:
             return
-        self.validate_raid_config(task, target_raid_config)
 
     def validate_raid_config(self, task, raid_config):
         """Validates the given RAID configuration.

@@ -304,9 +304,7 @@ def _inspect(function):
         elif param.kind == inspect.Parameter.VAR_POSITIONAL:
             param_positional = param
         else:
-            assert False, 'Unsupported parameter kind %s %s' % (
-                param.name, param.kind
-            )
+            assert False, f'Unsupported parameter kind {param.name} {param.kind}'
     return params, param_positional, param_keyword
 
 
@@ -331,7 +329,7 @@ def validate(*args, **kwargs):
             if not param_keyword:
                 # ensure each named argument belongs to a param
                 kwarg_keys = set(kwargs)
-                param_names = set(p.name for p in params)
+                param_names = {p.name for p in params}
                 extra_args = kwarg_keys.difference(param_names)
                 if extra_args:
                     raise exception.InvalidParameterValue(
@@ -382,7 +380,9 @@ def validate(*args, **kwargs):
                     kwargs_next.update(kwargs)
 
             return function(*args, **kwargs_next)
+
         return inner_check_args
+
     return inner_function
 
 

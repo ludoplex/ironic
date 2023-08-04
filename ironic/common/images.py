@@ -62,8 +62,7 @@ def _create_root_fs(root_directory, files_info):
         LOG.debug('Injecting %(path)s into an ISO from %(source)r',
                   {'path': path, 'source': src_file})
         target_file = os.path.join(root_directory, path)
-        dirname = os.path.dirname(target_file)
-        if dirname:
+        if dirname := os.path.dirname(target_file):
             os.makedirs(dirname, exist_ok=True)
 
         if isinstance(src_file, bytes):
@@ -100,8 +99,13 @@ def create_vfat_image(output_file, files_info=None, parameters=None,
     """
     try:
         # TODO(sbaker): use ironic_lib.utils.dd when rootwrap has been removed
-        utils.execute('dd', 'if=/dev/zero', 'of=%s' % output_file, 'count=1',
-                      'bs=%dKiB' % fs_size_kib)
+        utils.execute(
+            'dd',
+            'if=/dev/zero',
+            f'of={output_file}',
+            'count=1',
+            'bs=%dKiB' % fs_size_kib,
+        )
     except processutils.ProcessExecutionError as e:
         raise exception.ImageCreationFailed(image_type='vfat', error=e)
 
@@ -209,7 +213,7 @@ def create_isolinux_image_for_bios(
             CONF.isolinux_bin: ISOLINUX_BIN,
         }
         if inject_files:
-            files_info.update(inject_files)
+            files_info |= inject_files
 
         # ldlinux.c32 is required for syslinux 5.0 or later.
         if CONF.ldlinux_c32:
@@ -284,7 +288,7 @@ def create_esp_image_for_uefi(
             ramdisk: 'initrd',
         }
         if inject_files:
-            files_info.update(inject_files)
+            files_info |= inject_files
 
         with utils.tempdir() as mountdir:
             # Open the deploy iso used to initiate deploy and copy the
@@ -296,10 +300,9 @@ def create_esp_image_for_uefi(
 
                 grub_cfg = os.path.join(tmpdir, grub_rel_path)
 
-            # Use ELF boot loader provided
             elif esp_image and not deploy_iso:
                 e_img_rel_path = EFIBOOT_LOCATION
-                grub_rel_path = CONF.grub_config_path.lstrip(' ' + os.sep)
+                grub_rel_path = CONF.grub_config_path.lstrip(f' {os.sep}')
                 grub_cfg = os.path.join(tmpdir, grub_rel_path)
 
                 # Create an empty grub config file by copying /dev/null.
@@ -374,7 +377,7 @@ def fetch(context, image_href, path, force_raw=False):
         fetch_into(context, image_href, path)
 
     if force_raw:
-        image_to_raw(image_href, path, "%s.part" % path)
+        image_to_raw(image_href, path, f"{path}.part")
 
 
 def get_source_format(image_href, path):
@@ -399,9 +402,7 @@ def get_source_format(image_href, path):
 def force_raw_will_convert(image_href, path_tmp):
     with fileutils.remove_path_on_error(path_tmp):
         fmt = get_source_format(image_href, path_tmp)
-    if fmt != "raw":
-        return True
-    return False
+    return fmt != "raw"
 
 
 def image_to_raw(image_href, path, path_tmp):
@@ -409,7 +410,7 @@ def image_to_raw(image_href, path, path_tmp):
         fmt = get_source_format(image_href, path_tmp)
 
         if fmt != "raw":
-            staged = "%s.converted" % path
+            staged = f"{path}.converted"
 
             utils.is_memory_insufficient(raise_if_fail=True)
             LOG.debug("%(image)s was %(format)s, converting to raw",
@@ -534,7 +535,7 @@ def create_boot_iso(context, output_filename, kernel_href,
 
         params = []
         if root_uuid:
-            params.append('root=UUID=%s' % root_uuid)
+            params.append(f'root=UUID={root_uuid}')
         if kernel_params:
             params.append(kernel_params)
 
@@ -587,8 +588,7 @@ def is_whole_disk_image(ctx, instance_info):
     if not image_source:
         return
 
-    image_type = instance_info.get('image_type')
-    if image_type:
+    if image_type := instance_info.get('image_type'):
         # This logic reflects the fact that whole disk images are the default
         return image_type != IMAGE_TYPE_PARTITION
 
@@ -599,8 +599,7 @@ def is_whole_disk_image(ctx, instance_info):
         except Exception:
             return
 
-        image_type = iproperties.get('img_type')
-        if image_type:
+        if image_type := iproperties.get('img_type'):
             return image_type != IMAGE_TYPE_PARTITION
 
         is_whole_disk_image = (not iproperties.get('kernel_id')
@@ -639,12 +638,7 @@ def is_source_a_path(ctx, image_source):
                                               context=ctx)
     try:
         res = image_service.validate_href(image_source)
-        if 'headers' in dir(res):
-            # response/result is from the HTTP check path.
-            headers = res.headers
-        else:
-            # We have no headers.
-            headers = {}
+        headers = res.headers if 'headers' in dir(res) else {}
     except exception.ImageRefIsARedirect as e:
         # Our exception handling formats this for us in this
         # case. \o/
@@ -682,12 +676,7 @@ def is_source_a_path(ctx, image_source):
         # NOTE(TheJulia): Files on a webserver have a length which is returned
         # when headres are queried.
         return False
-    if image_source.endswith('/'):
-        # If all else fails, looks like a URL, and the server didn't give
-        # us any hints.
-        return True
-    # We were unable to determine if this was a folder or a file.
-    return False
+    return bool(image_source.endswith('/'))
 
 
 def _extract_iso(extract_iso, extract_dir):

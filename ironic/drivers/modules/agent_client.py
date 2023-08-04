@@ -82,14 +82,14 @@ class AgentClient(object):
 
     def _get_command_url(self, node):
         """Get URL endpoint for agent command request"""
-        agent_url = node.driver_internal_info.get('agent_url')
-        if not agent_url:
+        if agent_url := node.driver_internal_info.get('agent_url'):
+            return ('%(agent_url)s/%(api_version)s/commands/' %
+                    {'agent_url': agent_url,
+                     'api_version': CONF.agent.agent_api_version})
+        else:
             raise exception.AgentConnectionFailed(_('Agent driver requires '
                                                     'agent_url in '
                                                     'driver_internal_info'))
-        return ('%(agent_url)s/%(api_version)s/commands/' %
-                {'agent_url': agent_url,
-                 'api_version': CONF.agent.agent_api_version})
 
     def _get_command_body(self, method, params):
         """Generate command body from method and params"""
@@ -191,8 +191,7 @@ class AgentClient(object):
         request_params = {
             'wait': str(wait).lower()
         }
-        agent_token = node.driver_internal_info.get('agent_secret_token')
-        if agent_token:
+        if agent_token := node.driver_internal_info.get('agent_secret_token'):
             request_params['agent_token'] = agent_token
         LOG.debug('Executing agent command %(method)s for node %(node)s '
                   'with params %(params)s',
@@ -673,9 +672,7 @@ class AgentClient(object):
         :returns: A dict containing command response from agent.
                   See :func:`get_commands_status` for a command result sample.
         """
-        return self._command(node=node,
-                             method='standby.%s' % REBOOT_COMMAND,
-                             params={})
+        return self._command(node=node, method=f'standby.{REBOOT_COMMAND}', params={})
 
     @METRICS.timer('AgentClient.sync')
     def sync(self, node):
@@ -751,8 +748,7 @@ class AgentClient(object):
                       'ramdisk. Please contact the administrator to update '
                       'the rescue ramdisk to contain an ironic-python-agent '
                       'version of at least 6.0.0.'))
-            else:
-                params = {'rescue_password': fallback_rescue_pass}
-                return self._command(node=node,
-                                     method='rescue.finalize_rescue',
-                                     params=params)
+            params = {'rescue_password': fallback_rescue_pass}
+            return self._command(node=node,
+                                 method='rescue.finalize_rescue',
+                                 params=params)

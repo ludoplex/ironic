@@ -28,8 +28,7 @@ def read_from_file(fpath):
     """Read the data in file given by fpath."""
 
     with open(fpath, 'r') as stream:
-        yaml_data = yaml.load(stream, Loader=yaml.SafeLoader)
-        return yaml_data
+        return yaml.load(stream, Loader=yaml.SafeLoader)
 
 
 def split_str_to_field(input_str):
@@ -118,11 +117,8 @@ def create_table(table_title, table_contents):
 
     thead.append(row)
 
-    rows = []
-
     row = nodes.row()
-    rows.append(row)
-
+    rows = [row]
     entry = nodes.entry()
     entry += table_contents
     row += entry
@@ -180,8 +176,6 @@ def process_list(input_list):
     in input.
     """
 
-    out_list = []
-
     # Convert list to string
     str1 = "".join(input_list)
 
@@ -196,11 +190,7 @@ def process_list(input_list):
     # Remove empty items from the list
     list4 = list(filter(None, list3))
 
-    # Append the field name and field body strings together
-    for i in range(0, len(list4), 2):
-        out_list.append(list4[i] + list4[i + 1])
-
-    return out_list
+    return [list4[i] + list4[i + 1] for i in range(0, len(list4), 2)]
 
 
 def add_exception_info(failure_list):
@@ -231,16 +221,11 @@ def add_exception_info(failure_list):
 
             # Add the exception's HTTP code and HTTP phrase
             # to the field name
-            if isinstance(exc_code, HTTPStatus):
-                field_name = (field_name
-                             + " (HTTP "
-                             + str(exc_code.value)
-                             + " "
-                             + exc_code.phrase
-                             + ")")
-            else:
-                field_name = field_name + " (HTTP " + str(exc_code) + ")"
-
+            field_name = (
+                f"{field_name} (HTTP {str(exc_code.value)} {exc_code.phrase})"
+                if isinstance(exc_code, HTTPStatus)
+                else f"{field_name} (HTTP {str(exc_code)})"
+            )
             # Add the exception's HTTP description to the field body
             field_body = exc_msg + " \n" + field_body
 
@@ -265,7 +250,7 @@ class Parameters(Directive):
         # Read from yaml file
         param_file = self.arguments[0]
         cur_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        param_file_path = cur_path + '/' + param_file
+        param_file_path = f'{cur_path}/{param_file}'
         yaml_data = read_from_file(param_file_path)
 
         # Substitute the parameter descriptions with the yaml file descriptions
@@ -327,12 +312,15 @@ class Return(Directive):
             failure_detail = create_bullet_list(failure_dict, ret_build_env)
             ret_table_contents += failure_detail
 
-        if len(initial_list) > 0 or len(success_list) > 0 or len(proc_fail_list) > 0:
-            # Create a table to display the final Returns directive output
-            ret_table = create_table('Returns', ret_table_contents)
-            return [ret_table]
-        else:
+        if (
+            len(initial_list) <= 0
+            and len(success_list) <= 0
+            and len(proc_fail_list) <= 0
+        ):
             return None
+        # Create a table to display the final Returns directive output
+        ret_table = create_table('Returns', ret_table_contents)
+        return [ret_table]
 
 
 def setup(app):

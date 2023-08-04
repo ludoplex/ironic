@@ -126,5 +126,5 @@ class AbstractHardwareType(object, metaclass=abc.ABCMeta):
 
             iface = driver_factory.get_interface(self, iface_type,
                                                  default_iface)
-            properties.update(iface.get_properties())
+            properties |= iface.get_properties()
         return properties

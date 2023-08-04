@@ -18,6 +18,7 @@
 
 """Utilities and helper functions."""
 
+
 from collections import abc
 import contextlib
 import datetime
@@ -54,15 +55,14 @@ TIME_RE = r'(?P<hour>\d{2}):(?P<min>\d{2}):(?P<sec>\d{2})' + \
 TZ_RE = r'((?P<tz_sign>[+-])(?P<tz_hour>\d{2}):(?P<tz_min>\d{2}))' + \
         r'|(?P<tz_z>Z)'
 
-DATETIME_RE = re.compile(
-    '%sT%s(%s)?' % (DATE_RE, TIME_RE, TZ_RE))
+DATETIME_RE = re.compile(f'{DATE_RE}T{TIME_RE}({TZ_RE})?')
 
 
 def _get_root_helper():
     # NOTE(jlvillal): This function has been moved to ironic-lib. And is
     # planned to be deleted here. If need to modify this function, please
     # also do the same modification in ironic-lib
-    return 'sudo ironic-rootwrap %s' % CONF.rootwrap_config
+    return f'sudo ironic-rootwrap {CONF.rootwrap_config}'
 
 
 def execute(*cmd, **kwargs):
@@ -77,8 +77,7 @@ def execute(*cmd, **kwargs):
     :raises: ProcessExecutionError
     """
 
-    use_standard_locale = kwargs.pop('use_standard_locale', False)
-    if use_standard_locale:
+    if use_standard_locale := kwargs.pop('use_standard_locale', False):
         env = kwargs.pop('env_variables', os.environ.copy())
         env['LC_ALL'] = 'C'
         kwargs['env_variables'] = env
@@ -436,7 +435,7 @@ def get_updated_capabilities(current_capabilities, new_capabilities):
             raise ValueError(
                 _("Invalid capabilities string '%s'.") % current_capabilities)
 
-    cap_dict.update(new_capabilities)
+    cap_dict |= new_capabilities
     return ','.join('%(key)s:%(value)s' % {'key': key, 'value': value}
                     for key, value in cap_dict.items())
 
@@ -576,9 +575,7 @@ def pop_node_nested_field(node, collection, field, default=None):
 
 def wrap_ipv6(ip):
     """Wrap the address in square brackets if it's an IPv6 address."""
-    if ipaddress.ip_address(ip).version == 6:
-        return "[%s]" % ip
-    return ip
+    return f"[{ip}]" if ipaddress.ip_address(ip).version == 6 else ip
 
 
 def file_mime_type(path):
@@ -664,23 +661,20 @@ def fast_track_enabled(node):
     is_enabled = node.driver_info.get('fast_track')
     if is_enabled is None:
         return CONF.deploy.fast_track
-    else:
-        try:
-            return strutils.bool_from_string(is_enabled, strict=True)
-        except ValueError as exc:
-            raise exception.InvalidParameterValue(
-                _("Invalid value of fast_track: %s") % exc)
+    try:
+        return strutils.bool_from_string(is_enabled, strict=True)
+    except ValueError as exc:
+        raise exception.InvalidParameterValue(
+            _("Invalid value of fast_track: %s") % exc)
 
 
 def is_fips_enabled():
     """Check if FIPS mode is enabled in the system."""
-    try:
+    with contextlib.suppress(Exception):
         with open('/proc/sys/crypto/fips_enabled', 'r') as f:
             content = f.read()
             if content == "1\n":
                 return True
-    except Exception:
-        pass
     return False
 
 
@@ -689,10 +683,7 @@ def stop_after_retries(option, group=None):
     # NOTE(dtantsur): fetch the option inside of the nested call, otherwise it
     # cannot be changed in runtime.
     def should_stop(retry_state):
-        if group:
-            conf = getattr(CONF, group)
-        else:
-            conf = CONF
+        conf = getattr(CONF, group) if group else CONF
         num_retries = getattr(conf, option)
         return retry_state.attempt_number >= num_retries + 1
 

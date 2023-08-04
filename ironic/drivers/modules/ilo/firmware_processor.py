@@ -104,16 +104,16 @@ def _validate_sum_components(components):
     :param components: A list of components to be updated.
     :raises: InvalidParameterValue, for unsupported firmware component
     """
-    not_supported = []
-    for component in components:
-        if not re.search('\\.(scexe|exe|rpm)$', component):
-            not_supported.append(component)
-
-    if not_supported:
-        msg = (_("The component files '%s' provided are not supported in "
-                 "'SUM' based firmware update. The valid file extensions are "
-                 "'scexe', 'exe', 'rpm'.") %
-               ', '.join(x for x in not_supported))
+    if not_supported := [
+        component
+        for component in components
+        if not re.search('\\.(scexe|exe|rpm)$', component)
+    ]:
+        msg = _(
+            "The component files '%s' provided are not supported in "
+            "'SUM' based firmware update. The valid file extensions are "
+            "'scexe', 'exe', 'rpm'."
+        ) % ', '.join(not_supported)
         LOG.error(msg)
         raise exception.InvalidParameterValue(msg)
 
@@ -132,11 +132,11 @@ def get_and_validate_firmware_image_info(firmware_image_info,
     image_info = firmware_image_info or {}
 
     LOG.debug("Validating firmware image info: %s ... in progress", image_info)
-    missing_fields = []
-    for field in FIRMWARE_IMAGE_INFO_FIELDS:
-        if not image_info.get(field):
-            missing_fields.append(field)
-
+    missing_fields = [
+        field
+        for field in FIRMWARE_IMAGE_INFO_FIELDS
+        if not image_info.get(field)
+    ]
     if firmware_update_mode == 'ilo' and not image_info.get('component'):
         missing_fields.append('component')
 
@@ -149,8 +149,7 @@ def get_and_validate_firmware_image_info(firmware_image_info,
         raise exception.MissingParameterValue(msg)
 
     if firmware_update_mode == 'sum':
-        component = image_info.get('components')
-        if component:
+        if component := image_info.get('components'):
             _validate_sum_components(component)
     else:
         component = image_info['component'].lower()

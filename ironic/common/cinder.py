@@ -67,7 +67,7 @@ def get_client(context, auth_from_config=False):
         # a resource with a project ID in the URL, and with a service
         # token, the request gets a Bad Request response.
         # This works starting at Cinder microversion 3.67 - Yoga.
-        endpoint = endpoint.replace("/%s" % project_id, "")
+        endpoint = endpoint.replace(f"/{project_id}", "")
 
     if not context:
         context = ironic_context.RequestContext(auth_token=None)
@@ -165,7 +165,7 @@ def _create_metadata_dictionary(node, action):
               the metadata to send to cinder as it does
               not support nested dictionaries.
     """
-    label = "ironic_node_%s" % node.uuid
+    label = f"ironic_node_{node.uuid}"
     data = {'instance_uuid': node.instance_uuid or node.uuid,
             'last_seen': datetime.datetime.utcnow().isoformat(),
             'last_action': action}

@@ -79,17 +79,13 @@ class Checks(upgradecheck.UpgradeCommands):
             ('nodes', 'owner_idx'),
             ('nodes', 'lessee_idx'),
         ]
-        missing_indexes = []
-        for table, idx in indexes:
-            if not utils.index_exists(engine, table, idx):
-                missing_indexes.append(idx)
-
-        if missing_indexes:
+        if missing_indexes := [
+            idx
+            for table, idx in indexes
+            if not utils.index_exists(engine, table, idx)
+        ]:
             idx_list = ', '.join(missing_indexes)
-            msg = ('Indexes missing for ideal database performance. Please '
-                   'consult https://docs.openstack.org/ironic/latest/admin/'
-                   'tuning.html for information on indexes. Missing: %s'
-                   % idx_list)
+            msg = f'Indexes missing for ideal database performance. Please consult https://docs.openstack.org/ironic/latest/admin/tuning.html for information on indexes. Missing: {idx_list}'
             return upgradecheck.Result(upgradecheck.Code.WARNING, details=msg)
         else:
             return upgradecheck.Result(upgradecheck.Code.SUCCESS)
@@ -119,11 +115,7 @@ class Checks(upgradecheck.UpgradeCommands):
                        'and downtime to dump, modify the table engine to '
                        'utilize InnoDB, and reload the allocations table to '
                        'utilize the InnoDB engine.')
-            if msg:
-                msg = msg + ' Additionally: ' + warning
-            else:
-                msg = warning
-
+            msg = f'{msg} Additionally: {warning}' if msg else warning
         if msg:
             return upgradecheck.Result(upgradecheck.Code.WARNING, details=msg)
         else:

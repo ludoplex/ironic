@@ -130,7 +130,7 @@ def store_inspection_data(node, inventory, plugin_data, context):
             plugin_data=plugin_data).create()
         LOG.info('Inspection data was stored in database for node %s',
                  node.uuid)
-    if store_data == 'swift':
+    elif store_data == 'swift':
         swift_object_name = _store_inspection_data_in_swift(
             node_uuid=node.uuid,
             inventory_data=inventory,

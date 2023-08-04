@@ -76,7 +76,7 @@ class MixinVendorInterface(base.VendorInterface):
                 driver_methods = iface.vendor_routes
 
             try:
-                d.update({method_name: driver_methods[method_name]})
+                d[method_name] = driver_methods[method_name]
             except KeyError:
                 pass
         return d
@@ -107,7 +107,7 @@ class MixinVendorInterface(base.VendorInterface):
         properties = {}
         interfaces = set(self.mapping.values())
         for interface in interfaces:
-            properties.update(interface.get_properties())
+            properties |= interface.get_properties()
         return properties
 
     def validate(self, task, method, **kwargs):
@@ -174,11 +174,7 @@ def add_node_capability(task, capability, value):
 
     new_cap = ':'.join([capability, value])
 
-    if capabilities:
-        capabilities = ','.join([capabilities, new_cap])
-    else:
-        capabilities = new_cap
-
+    capabilities = ','.join([capabilities, new_cap]) if capabilities else new_cap
     properties['capabilities'] = capabilities
     node.properties = properties
     node.save()
@@ -199,10 +195,8 @@ def ensure_next_boot_device(task, driver_info):
         if info.get('is_next_boot_persistent') is False:
             task.node.del_driver_internal_info('is_next_boot_persistent')
             task.node.save()
-        else:
-            boot_device = info.get('persistent_boot_device')
-            if boot_device:
-                utils.node_set_boot_device(task, boot_device)
+        elif boot_device := info.get('persistent_boot_device'):
+            utils.node_set_boot_device(task, boot_device)
 
 
 def force_persistent_boot(task, device, persistent):
@@ -424,8 +418,7 @@ def get_field(node, name, deprecated_prefix=None, use_conf=False,
         return value
 
     deprecated_name = f'{deprecated_prefix}_{name}'
-    value = node_coll.get(deprecated_name)
-    if value:
+    if value := node_coll.get(deprecated_name):
         LOG.warning("The %s field %s of node %s is deprecated, "
                     "please use %s instead",
                     collection, deprecated_name, node.uuid, name)

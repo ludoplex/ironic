@@ -13,6 +13,7 @@
 Base PXE Interface Methods
 """
 
+
 from ironic_lib import metrics_utils
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -54,7 +55,7 @@ OPTIONAL_PROPERTIES = {
     {'option_group': 'pxe'},
 }
 COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(driver_utils.OPTIONAL_PROPERTIES)
+COMMON_PROPERTIES |= driver_utils.OPTIONAL_PROPERTIES
 COMMON_PROPERTIES.update(RESCUE_PROPERTIES)
 COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
 
@@ -205,8 +206,8 @@ class PXEBaseMixin(object):
                                            persistent=False)
 
         if self.ipxe_enabled and CONF.pxe.ipxe_use_swift:
-            kernel_label = '%s_kernel' % mode
-            ramdisk_label = '%s_ramdisk' % mode
+            kernel_label = f'{mode}_kernel'
+            ramdisk_label = f'{mode}_ramdisk'
             pxe_info.pop(kernel_label, None)
             pxe_info.pop(ramdisk_label, None)
 
@@ -238,7 +239,7 @@ class PXEBaseMixin(object):
             boot_mode_utils.configure_secure_boot_if_needed(task)
 
         instance_image_info = {}
-        if boot_option == "ramdisk" or boot_option == "kickstart":
+        if boot_option in ["ramdisk", "kickstart"]:
             instance_image_info = pxe_utils.get_instance_image_info(
                 task, ipxe_enabled=self.ipxe_enabled)
             pxe_utils.cache_ramdisk_kernel(task, instance_image_info,

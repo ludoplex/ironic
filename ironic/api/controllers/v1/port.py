@@ -637,7 +637,7 @@ class PortsController(rest.RestController):
         for field in (self.advanced_net_fields
                       + ['portgroup_uuid', 'physical_network',
                          'is_smartnic', 'local_link_connection/network_type']):
-            field_path = '/%s' % field
+            field_path = f'/{field}'
             if (api_utils.get_patch_values(patch, field_path)
                     or api_utils.is_path_removed(patch, field_path)):
                 fields_to_check.add(field)

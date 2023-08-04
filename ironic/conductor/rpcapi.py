@@ -243,7 +243,7 @@ class ConductorAPI(object):
 
         """
         hostname = self.get_conductor_for(node)
-        return '%s.%s' % (self.topic, hostname)
+        return f'{self.topic}.{hostname}'
 
     def get_random_topic(self):
         """Get an RPC topic for a random conductor service."""
@@ -253,7 +253,7 @@ class ConductorAPI(object):
         except IndexError:
             # There are no conductors - return 503 Service Unavailable
             raise exception.TemporaryFailure()
-        return '%s.%s' % (self.topic, hostname)
+        return f'{self.topic}.{hostname}'
 
     def get_topic_for_driver(self, driver_name):
         """Get RPC topic name for a conductor supporting the given driver.
@@ -279,11 +279,11 @@ class ConductorAPI(object):
             # sense to report 404 on any driver request.
             raise exception.DriverNotFound(_("No conductors registered."))
         host = random.choice(list(ring.nodes))
-        return self.topic + "." + host
+        return f"{self.topic}.{host}"
 
     def get_current_topic(self):
         """Get RPC topic name for the current conductor."""
-        return self.topic + "." + CONF.host
+        return f"{self.topic}.{CONF.host}"
 
     def _can_send_version(self, version):
         return (self.client.can_send_version(version)

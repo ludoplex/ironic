@@ -107,17 +107,7 @@ class HttpImageService(BaseImageService):
                                      timeout=CONF.webserver_connection_timeout)
 
             if response.status_code == http_client.MOVED_PERMANENTLY:
-                # NOTE(TheJulia): In the event we receive a redirect, we need
-                # to notify the caller. Before this we would just fail,
-                # but a url which is missing a trailing slash results in a
-                # redirect to a target path, and the caller *may* actually
-                # care about that.
-                redirect = requests.Session().get_redirect_target(response)
-
-                # Extra guard because this is pointless if there is no
-                # location in the field. Requests also properly formats
-                # our string for us, or gives us None.
-                if redirect:
+                if redirect := requests.Session().get_redirect_target(response):
                     raise exception.ImageRefIsARedirect(
                         image_ref=image_href,
                         redirect_url=redirect)
@@ -322,16 +312,7 @@ def get_image_service(image_href, client=None, context=None):
     :returns: Instance of an image service class that is able to download
         specified image.
     """
-    scheme = urlparse.urlparse(image_href).scheme.lower()
-
-    if not scheme:
-        if uuidutils.is_uuid_like(str(image_href)):
-            cls = GlanceImageService
-        else:
-            raise exception.ImageRefValidationFailed(
-                image_href=image_href,
-                reason=_('Scheme-less image href is not a UUID.'))
-    else:
+    if scheme := urlparse.urlparse(image_href).scheme.lower():
         cls = protocol_mapping.get(scheme)
         if not cls:
             raise exception.ImageRefValidationFailed(
@@ -339,6 +320,10 @@ def get_image_service(image_href, client=None, context=None):
                 reason=_('Image download protocol %s is not supported.'
                          ) % scheme)
 
-    if cls == GlanceImageService:
-        return cls(client, context)
-    return cls()
+    elif uuidutils.is_uuid_like(str(image_href)):
+        cls = GlanceImageService
+    else:
+        raise exception.ImageRefValidationFailed(
+            image_href=image_href,
+            reason=_('Scheme-less image href is not a UUID.'))
+    return cls(client, context) if cls == GlanceImageService else cls()

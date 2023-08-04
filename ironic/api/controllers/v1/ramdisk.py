@@ -113,8 +113,7 @@ class LookupController(rest.RestController):
                 invalid_addresses.append(addr)
 
         if invalid_addresses:
-            node_log = ('' if not node_uuid
-                        else '(Node UUID: %s)' % node_uuid)
+            node_log = '' if not node_uuid else f'(Node UUID: {node_uuid})'
             LOG.warning('The following MAC addresses "%(addrs)s" are '
                         'invalid and will be ignored by the lookup '
                         'request %(node)s',

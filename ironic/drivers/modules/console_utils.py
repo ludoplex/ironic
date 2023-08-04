@@ -77,7 +77,7 @@ def _get_console_pid_file(node_uuid):
     """Generate the pid file name to hold the terminal process id."""
 
     pid_dir = _get_console_pid_dir()
-    name = "%s.pid" % node_uuid
+    name = f"{node_uuid}.pid"
     path = os.path.join(pid_dir, name)
     return path
 
@@ -173,11 +173,7 @@ def _verify_port(port, host=None):
             pass
     else:
         host = CONF.host
-    if ip_version == 6:
-        s = socket.socket(socket.AF_INET6)
-    else:
-        s = socket.socket()
-
+    s = socket.socket(socket.AF_INET6) if ip_version == 6 else socket.socket()
     try:
         s.bind((host, port))
     except socket.error:
@@ -294,7 +290,7 @@ def start_shellinabox_console(node_uuid, port, console_cmd):
         args.append("-t")
     args.append("-p")
     args.append(str(port))
-    args.append("--background=%s" % pid_file)
+    args.append(f"--background={pid_file}")
     args.append("-s")
     args.append(console_cmd)
 
@@ -412,7 +408,7 @@ def start_socat_console(node_uuid, port, console_cmd):
     # the connection will be closed.
     if CONF.console.terminal_timeout > 0:
         args.append('-T%d' % CONF.console.terminal_timeout)
-    args.append('-L%s' % pid_file)
+    args.append(f'-L{pid_file}')
 
     console_host = CONF.console.socat_address
     if ipaddress.ip_address(console_host).version == 6:
@@ -424,7 +420,7 @@ def start_socat_console(node_uuid, port, console_cmd):
     args.append(arg % {'host': console_host,
                        'port': port})
 
-    args.append('EXEC:"%s",pty,stderr' % console_cmd)
+    args.append(f'EXEC:"{console_cmd}",pty,stderr')
 
     # run the command as a subprocess
     try:

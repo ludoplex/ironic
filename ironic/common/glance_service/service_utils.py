@@ -33,10 +33,7 @@ _IMAGE_ATTRIBUTES = ['size', 'disk_format', 'owner',
 
 
 def _extract_attributes(image):
-    output = {}
-    for attr in _IMAGE_ATTRIBUTES:
-        output[attr] = getattr(image, attr, None)
-
+    output = {attr: getattr(image, attr, None) for attr in _IMAGE_ATTRIBUTES}
     output['properties'] = {}
     output['schema'] = image.schema
 
@@ -64,8 +61,7 @@ _CONVERT_PROPS = ('block_device_mapping', 'mappings')
 
 def _convert(metadata):
     metadata = copy.deepcopy(metadata)
-    properties = metadata.get('properties')
-    if properties:
+    if properties := metadata.get('properties'):
         for attr in _CONVERT_PROPS:
             if attr in properties:
                 prop = properties[attr]

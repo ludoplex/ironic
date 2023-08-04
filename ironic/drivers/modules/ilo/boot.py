@@ -97,8 +97,9 @@ def parse_driver_info(node, mode='deploy'):
         missing.
     """
     d_info = {}
-    iso_ref = driver_utils.get_agent_iso(node, mode, deprecated_prefix='ilo')
-    if iso_ref:
+    if iso_ref := driver_utils.get_agent_iso(
+        node, mode, deprecated_prefix='ilo'
+    ):
         d_info[f'{mode}_iso'] = iso_ref
     else:
         d_info = driver_utils.get_agent_kernel_ramdisk(
@@ -190,7 +191,7 @@ def _parse_deploy_info(node):
         value.
     """
     info = {}
-    info.update(deploy_utils.get_image_instance_info(node))
+    info |= deploy_utils.get_image_instance_info(node)
     info.update(parse_driver_info(node))
     return info
 
@@ -269,23 +270,12 @@ def prepare_node_for_deploy(task):
     """
     manager_utils.node_power_action(task, states.POWER_OFF)
 
-    # Boot mode can be changed only if secure boot is in disabled state.
-    # secure boot and boot mode cannot be changed together.
-    change_boot_mode = True
-
-    # Disable secure boot on the node if it is in enabled state.
-    if _disable_secure_boot(task):
-        change_boot_mode = False
-
+    change_boot_mode = not _disable_secure_boot(task)
     if change_boot_mode:
         ilo_common.update_boot_mode(task)
-    else:
-        # Need to update boot mode that will be used during deploy, if one is
-        # not provided.
-        # Since secure boot was disabled, we are in 'uefi' boot mode.
-        if boot_mode_utils.get_boot_mode_for_deploy(task.node) is None:
-            task.node.set_driver_internal_info('deploy_boot_mode', 'uefi')
-            task.node.save()
+    elif boot_mode_utils.get_boot_mode_for_deploy(task.node) is None:
+        task.node.set_driver_internal_info('deploy_boot_mode', 'uefi')
+        task.node.save()
 
 
 class IloVirtualMediaBoot(base.BootInterface):
@@ -768,7 +758,7 @@ class IloUefiHttpsBoot(base.BootInterface):
             if image_ref is not None and image_ref.startswith('http://'):
                 insecure_props.append(image_ref)
 
-        if len(insecure_props) > 0:
+        if insecure_props:
             error = (_('Secure URLs exposed over HTTPS are expected. '
                        'Insecure URLs are provided for %s') % insecure_props)
             raise exception.InvalidParameterValue(error)
@@ -788,7 +778,7 @@ class IloUefiHttpsBoot(base.BootInterface):
             value.
         """
         deploy_info = {}
-        deploy_info.update(deploy_utils.get_image_instance_info(node))
+        deploy_info |= deploy_utils.get_image_instance_info(node)
         deploy_info.update(self._parse_driver_info(node))
 
         return deploy_info
@@ -968,7 +958,7 @@ class IloUefiHttpsBoot(base.BootInterface):
         # with virtual media boot, we should generate a token!
         manager_utils.add_secret_token(node, pregenerated=True)
         ramdisk_params['ipa-agent-token'] = \
-            task.node.driver_internal_info['agent_secret_token']
+                task.node.driver_internal_info['agent_secret_token']
         task.node.save()
 
         deploy_nic_mac = deploy_utils.get_single_nic_with_vif_port_id(task)
@@ -978,10 +968,7 @@ class IloUefiHttpsBoot(base.BootInterface):
         # Signal to IPA that this is a vmedia boot operation.
         ramdisk_params['boot_method'] = 'vmedia'
 
-        mode = 'deploy'
-        if node.provision_state == states.RESCUING:
-            mode = 'rescue'
-
+        mode = 'rescue' if node.provision_state == states.RESCUING else 'deploy'
         d_info = self._parse_driver_info(node, mode)
 
         iso_ref = image_utils.prepare_deploy_iso(task, ramdisk_params,

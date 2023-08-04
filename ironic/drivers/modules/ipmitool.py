@@ -29,6 +29,7 @@ WHICH PROVIDES DIFFERENT COMMAND-LINE OPTIONS AND *IS NOT SUPPORTED* BY THIS
 DRIVER.
 """
 
+
 import contextlib
 import os
 import re
@@ -115,8 +116,7 @@ OPTIONAL_PROPERTIES = {
                            'default value depends on the ipmitool version, '
                            'some recent versions have switched from 3 to 17.'),
 }
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
+COMMON_PROPERTIES = REQUIRED_PROPERTIES | OPTIONAL_PROPERTIES
 CONSOLE_PROPERTIES = {
     'ipmi_terminal_port': _("node's UDP port to connect to. Only required for "
                             "console access.")
@@ -325,8 +325,9 @@ def _parse_driver_info(node):
     info = node.driver_info or {}
     internal_info = node.driver_internal_info or {}
     bridging_types = ['single', 'dual']
-    missing_info = [key for key in REQUIRED_PROPERTIES if not info.get(key)]
-    if missing_info:
+    if missing_info := [
+        key for key in REQUIRED_PROPERTIES if not info.get(key)
+    ]:
         raise exception.MissingParameterValue(_(
             "Missing the following IPMI credentials in node's"
             " driver_info: %s.") % missing_info)
@@ -376,7 +377,7 @@ def _parse_driver_info(node):
          target_address) = (None,) * 5
     elif bridging_type in bridging_types:
         # check if the particular bridging option is supported on host
-        if not _is_option_supported('%s_bridge' % bridging_type):
+        if not _is_option_supported(f'{bridging_type}_bridge'):
             raise exception.InvalidParameterValue(_(
                 "Value for ipmi_bridging is provided as %s, but IPMI "
                 "bridging is not supported by the IPMI utility installed "
@@ -466,25 +467,16 @@ def _get_ipmitool_args(driver_info, pw_file=None):
                        ('hex_kg_key', '-y'),
                        ('cipher_suite', '-C')]:
         if driver_info[field]:
-            args.append(arg)
-            args.append(driver_info[field])
-
+            args.extend((arg, driver_info[field]))
     for name, option in BRIDGING_OPTIONS:
         if driver_info[name] is not None:
-            args.append(option)
-            args.append(driver_info[name])
-
+            args.extend((option, driver_info[name]))
     if pw_file:
-        args.append('-f')
-        args.append(pw_file)
-
+        args.extend(('-f', pw_file))
     if CONF.ipmi.debug:
         args.append('-v')
 
-    # ensure all arguments are strings
-    args = [str(arg) for arg in args]
-
-    return args
+    return [str(arg) for arg in args]
 
 
 def _ipmitool_timing_args():
@@ -535,13 +527,12 @@ def choose_cipher_suite(actual_cipher_suite):
 
     if actual_cipher_suite is None:
         return available_cs_versions[-1]
-    else:
-        try:
-            cs_index = available_cs_versions.index(actual_cipher_suite)
-        except ValueError:
-            return available_cs_versions[-1]
+    try:
+        cs_index = available_cs_versions.index(actual_cipher_suite)
+    except ValueError:
+        return available_cs_versions[-1]
 
-        return available_cs_versions[max(cs_index - 1, 0)]
+    return available_cs_versions[max(cs_index - 1, 0)]
 
 
 def check_cipher_suite_errors(cmd_stderr):
@@ -555,10 +546,9 @@ def check_cipher_suite_errors(cmd_stderr):
     cs_errors = ["Unsupported cipher suite ID",
                  "Error in open session response message :"
                  " no matching cipher suite"]
-    for cs_err in cs_errors:
-        if cmd_stderr is not None and cs_err in cmd_stderr:
-            return True
-    return False
+    return any(
+        cmd_stderr is not None and cs_err in cmd_stderr for cs_err in cs_errors
+    )
 
 
 def update_cipher_suite_cmd(actual_cs, args):
@@ -705,7 +695,7 @@ def _set_and_wait(task, power_action, driver_info, timeout=None):
     # NOTE(sambetts): Retries for ipmi power action failure will be handled by
     # the _exec_ipmitool function, so no need to wrap this call in its own
     # retries.
-    cmd = "power %s" % cmd_name
+    cmd = f"power {cmd_name}"
     try:
         _exec_ipmitool(driver_info, cmd)
     except (exception.PasswordFileFailedToCreate,
@@ -881,7 +871,7 @@ def send_raw(task, raw_bytes):
     LOG.debug('Sending node %(node)s raw bytes %(bytes)s',
               {'bytes': raw_bytes, 'node': node_uuid})
     driver_info = _parse_driver_info(task.node)
-    cmd = 'raw %s' % raw_bytes
+    cmd = f'raw {raw_bytes}'
 
     try:
         out, err = _exec_ipmitool(driver_info, cmd)
@@ -912,7 +902,7 @@ def dump_sdr(task, file_path):
     LOG.debug('Dump SDR data for node %(node)s to file %(name)s',
               {'name': file_path, 'node': node_uuid})
     driver_info = _parse_driver_info(task.node)
-    cmd = 'sdr dump %s' % file_path
+    cmd = f'sdr dump {file_path}'
 
     try:
         out, err = _exec_ipmitool(driver_info, cmd)
@@ -971,9 +961,9 @@ def _allocate_port(task, host=None):
 
 def _release_allocated_port(task):
     node = task.node
-    allocated_port = node.del_driver_internal_info(
-        'allocated_ipmi_terminal_port')
-    if allocated_port:
+    if allocated_port := node.del_driver_internal_info(
+        'allocated_ipmi_terminal_port'
+    ):
         node.save()
         console_utils.release_port(allocated_port)
 
@@ -1208,8 +1198,7 @@ class IPMIManagement(base.ManagementInterface):
             efi_persistence = '0xe0' if persistent else '0xa0'
             # 0xe0 is persistent UEFI boot, 0xa0 is one-time UEFI boot.
             boot_device_map = _vendor_aware_boot_device_map(task)
-            raw_cmd = ('0x00 0x08 0x05 %s %s 0x00 0x00 0x00' %
-                       (efi_persistence, boot_device_map[device]))
+            raw_cmd = f'0x00 0x08 0x05 {efi_persistence} {boot_device_map[device]} 0x00 0x00 0x00'
             send_raw(task, raw_cmd)
             return
 
@@ -1219,9 +1208,9 @@ class IPMIManagement(base.ManagementInterface):
         # NOTE(TheJulia): Once upon a time we had efiboot here. It doesn't
         # work in all cases and directs us to unhappy places if the values
         # are incorrect.
-        cmd = "chassis bootdev %s" % device
+        cmd = f"chassis bootdev {device}"
         if options:
-            cmd = cmd + " options=%s" % ','.join(options)
+            cmd = f"{cmd} options={','.join(options)}"
         driver_info = _parse_driver_info(task.node)
         try:
             out, err = _exec_ipmitool(driver_info, cmd)
@@ -1280,11 +1269,7 @@ class IPMIManagement(base.ManagementInterface):
                         'Error: %(error)s',
                         {'node': driver_info['uuid'], 'cmd': cmd, 'error': e})
             raise exception.IPMIFailure(cmd=cmd)
-        # FIXME(TheJulia): This whole thing needs to be refactored to be based
-        # upon the response generated by the "Boot parameter data".
-        # See: https://storyboard.openstack.org/#!/story/2008241
-        re_obj = re.search('Boot Device Selector : (.+)?\n', out)
-        if re_obj:
+        if re_obj := re.search('Boot Device Selector : (.+)?\n', out):
             boot_selector = re_obj.groups('')[0]
             if 'PXE' in boot_selector:
                 response['boot_device'] = boot_devices.PXE
@@ -1314,9 +1299,8 @@ class IPMIManagement(base.ManagementInterface):
         """
         driver_info = _parse_driver_info(task.node)
         out, err = _exec_ipmitool(driver_info, "mc info")
-        re_obj = re.search("Manufacturer Name *: (.+)", out)
-        if re_obj:
-            return re_obj.group(1).lower()
+        if re_obj := re.search("Manufacturer Name *: (.+)", out):
+            return re_obj[1].lower()
 
     @METRICS.timer('IPMIManagement.get_sensors_data')
     def get_sensors_data(self, task):
@@ -1410,15 +1394,11 @@ class VendorPassthru(base.VendorInterface):
         node_uuid = task.node.uuid
 
         warm = strutils.bool_from_string(warm)
-        if warm:
-            warm_param = 'warm'
-        else:
-            warm_param = 'cold'
-
+        warm_param = 'warm' if warm else 'cold'
         LOG.debug('Doing %(warm)s BMC reset on node %(node)s',
                   {'warm': warm_param, 'node': node_uuid})
         driver_info = _parse_driver_info(task.node)
-        cmd = 'bmc reset %s' % warm_param
+        cmd = f'bmc reset {warm_param}'
 
         try:
             out, err = _exec_ipmitool(driver_info, cmd)
@@ -1563,13 +1543,8 @@ class IPMIShellinaboxConsole(IPMIConsole):
         if not driver_info['port']:
             driver_info['port'] = _allocate_port(task)
 
-        try:
+        with contextlib.suppress(OSError):
             self._exec_stop_console(driver_info)
-        except OSError:
-            # We need to drop any existing sol sessions with sol deactivate.
-            # OSError is raised when sol session is already deactivated,
-            # so we can ignore it.
-            pass
         self._start_console(driver_info,
                             console_utils.start_shellinabox_console)
 
@@ -1622,13 +1597,8 @@ class IPMISocatConsole(IPMIConsole):
             driver_info['port'] = _allocate_port(
                 task, host=CONF.console.socat_address)
 
-        try:
+        with contextlib.suppress(OSError):
             self._exec_stop_console(driver_info)
-        except OSError:
-            # We need to drop any existing sol sessions with sol deactivate.
-            # OSError is raised when sol session is already deactivated,
-            # so we can ignore it.
-            pass
         self._start_console(driver_info, console_utils.start_socat_console)
 
     @METRICS.timer('IPMISocatConsole.stop_console')

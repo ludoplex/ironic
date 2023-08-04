@@ -171,13 +171,12 @@ def _wait_for_state_change(node, target_state, requested_state,
     timer.start(interval=interval).wait()
     if state[0] == state_to_check:
         return int(retries[0] * interval)
-    else:
-        timeout = int(max_retry * interval)
-        LOG.error("iLO failed to change state to %(tstate)s "
-                  "within %(timeout)s sec for node %(node)s",
-                  {'tstate': target_state, 'node': node.uuid,
-                   'timeout': int(max_retry * interval)})
-        raise exception.PowerStateFailure(pstate=target_state)
+    timeout = int(max_retry * interval)
+    LOG.error("iLO failed to change state to %(tstate)s "
+              "within %(timeout)s sec for node %(node)s",
+              {'tstate': target_state, 'node': node.uuid,
+               'timeout': int(max_retry * interval)})
+    raise exception.PowerStateFailure(pstate=target_state)
 
 
 def _set_power_state(task, target_state, timeout=None):

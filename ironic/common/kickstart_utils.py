@@ -67,7 +67,7 @@ def read_iso9600_config_drive(config_drive):
     :returns: A dict containing path as key and contents of the configdrive
               file as value.
     """
-    config_drive_dict = dict()
+    config_drive_dict = {}
     with tempfile.NamedTemporaryFile(suffix='.iso') as iso:
         iso.write(config_drive)
         iso.flush()
@@ -77,7 +77,7 @@ def read_iso9600_config_drive(config_drive):
             _get_config_drive_dict_from_iso(iso_reader, config_drive_dict)
             iso_reader.close()
         except Exception as e:
-            msg = "Error reading the config drive iso: %s" % e
+            msg = f"Error reading the config drive iso: {e}"
             LOG.error(msg)
     return config_drive_dict
 
@@ -101,7 +101,7 @@ def decode_and_extract_config_drive_iso(config_drive_iso_gz):
         with gzip.GzipFile(fileobj=iso_gz_obj, mode='rb') as f:
             config_drive_iso = f.read()
     except Exception as exc:
-        error_msg = "Decoding/Extraction of config drive failed: %s" % exc
+        error_msg = f"Decoding/Extraction of config drive failed: {exc}"
         raise exception.InstanceDeployFailure(error_msg)
     return config_drive_iso
 
@@ -122,24 +122,25 @@ def _write_config_drive_content(content, file_path):
     """Generate post ks script to write each userdata content."""
 
     content = base64.b64encode(str.encode(content))
-    kickstart_data = []
-    kickstart_data.append("\n")
-    kickstart_data.append("%post\n")
-    kickstart_data.append(("DIRPATH=`/usr/bin/dirname "
-                           "{file_path}`\n").format(
-        file_path=file_path))
-    kickstart_data.append("/bin/mkdir -p $DIRPATH\n")
-    kickstart_data.append("CONTENT='{content}'\n".format(
-        content=content))
-    kickstart_data.append("echo $CONTENT | "
-                          "/usr/bin/base64 --decode > "
-                          "{file_path}".format(file_path=file_path))
-    kickstart_data.append("\n")
-    kickstart_data.append(
-        "/bin/chmod 600 {file_path}\n".format(file_path=file_path)
-    )
-    kickstart_data.append("%end\n\n")
-
+    kickstart_data = [
+        "\n",
+        "%post\n",
+        (
+            ("DIRPATH=`/usr/bin/dirname " "{file_path}`\n").format(
+                file_path=file_path
+            )
+        ),
+        "/bin/mkdir -p $DIRPATH\n",
+        "CONTENT='{content}'\n".format(content=content),
+        (
+            "echo $CONTENT | "
+            "/usr/bin/base64 --decode > "
+            "{file_path}".format(file_path=file_path)
+        ),
+        "\n",
+        "/bin/chmod 600 {file_path}\n".format(file_path=file_path),
+        "%end\n\n",
+    ]
     return "".join(kickstart_data)
 
 

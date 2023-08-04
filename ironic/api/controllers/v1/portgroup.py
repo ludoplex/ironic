@@ -96,10 +96,16 @@ def convert_with_links(rpc_portgroup, fields=None, sanitize=True):
     )
     url = api.request.public_url
     portgroup['ports'] = [
-        link.make_link('self', url, 'portgroups',
-                       rpc_portgroup.uuid + "/ports"),
-        link.make_link('bookmark', url, 'portgroups',
-                       rpc_portgroup.uuid + "/ports", bookmark=True)
+        link.make_link(
+            'self', url, 'portgroups', f"{rpc_portgroup.uuid}/ports"
+        ),
+        link.make_link(
+            'bookmark',
+            url,
+            'portgroups',
+            f"{rpc_portgroup.uuid}/ports",
+            bookmark=True,
+        ),
     ]
 
     if fields is not None:
@@ -149,8 +155,7 @@ class PortgroupsController(pecan.rest.RestController):
             pecan.abort(http_client.BAD_REQUEST, e.args[0])
         if not remainder:
             return
-        subcontroller = self._subcontroller_map.get(remainder[0])
-        if subcontroller:
+        if subcontroller := self._subcontroller_map.get(remainder[0]):
             if api_utils.allow_portgroups_subcontrollers():
                 return subcontroller(
                     portgroup_ident=ident,
@@ -191,9 +196,7 @@ class PortgroupsController(pecan.rest.RestController):
                 _("The sort_key value %(key)s is an invalid field for "
                   "sorting") % {'key': sort_key})
 
-        node_ident = self.parent_node_ident or node_ident
-
-        if node_ident:
+        if node_ident := self.parent_node_ident or node_ident:
             # FIXME: Since all we need is the node ID, we can
             #        make this more efficient by only querying
             #        for that column. This will get cleaned up

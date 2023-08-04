@@ -340,8 +340,7 @@ def reject_fields_in_newer_versions(obj):
 
 def reject_patch_in_newer_versions(patch):
     for field in api_utils.disallowed_fields():
-        value = api_utils.get_patch_values(patch, '/%s' % field)
-        if value:
+        if value := api_utils.get_patch_values(patch, f'/{field}'):
             LOG.debug('Field %(field)s is not acceptable in version %(ver)s',
                       {'field': field, 'ver': api.request.version})
             raise exception.NotAcceptable()
@@ -480,7 +479,7 @@ class IndicatorAtComponent(object):
         unique_name = kwargs.get('unique_name')
 
         if name and component:
-            self.unique_name = name + '@' + component
+            self.unique_name = f'{name}@{component}'
             self.name = name
             self.component = component
 
@@ -512,15 +511,19 @@ def indicator_convert_with_links(node_uuid, rpc_component, rpc_name,
         'states': rpc_fields.get('states', []),
         'links': [
             link.make_link(
-                'self', url, 'nodes',
-                '%s/management/indicators/%s' % (
-                    node_uuid, rpc_name)),
+                'self',
+                url,
+                'nodes',
+                f'{node_uuid}/management/indicators/{rpc_name}',
+            ),
             link.make_link(
-                'bookmark', url, 'nodes',
-                '%s/management/indicators/%s' % (
-                    node_uuid, rpc_name),
-                bookmark=True)
-        ]
+                'bookmark',
+                url,
+                'nodes',
+                f'{node_uuid}/management/indicators/{rpc_name}',
+                bookmark=True,
+            ),
+        ],
     }
 
 
@@ -1398,22 +1401,21 @@ def _get_fields_for_node_query(fields=None):
 
     if not fields:
         return valid_fields
-    else:
-        object_fields = fields[:]
-        api_fulfilled_fields = ['allocation_uuid', 'chassis_uuid',
-                                'conductor']
-        for api_field in api_fulfilled_fields:
-            if api_field in object_fields:
-                object_fields.remove(api_field)
+    object_fields = fields[:]
+    api_fulfilled_fields = ['allocation_uuid', 'chassis_uuid',
+                            'conductor']
+    for api_field in api_fulfilled_fields:
+        if api_field in object_fields:
+            object_fields.remove(api_field)
 
-        query_fields = ['uuid', 'traits'] + api_fulfilled_fields \
-            + valid_fields
-        for field in fields:
-            if field not in query_fields:
-                msg = 'Field %s is not a valid field.' % field
-                raise exception.Invalid(msg)
+    query_fields = ['uuid', 'traits'] + api_fulfilled_fields \
+        + valid_fields
+    for field in fields:
+        if field not in query_fields:
+            msg = f'Field {field} is not a valid field.'
+            raise exception.Invalid(msg)
 
-        return object_fields
+    return object_fields
 
 
 def node_convert_with_links(rpc_node, fields=None, sanitize=True):
@@ -1880,11 +1882,7 @@ class NodeHistoryController(rest.RestController):
                                           detail=False):
         """Add link and convert history event"""
         url = api.request.public_url
-        if not detail:
-            fields = self.standard_fields
-        else:
-            fields = self.detail_fields
-
+        fields = self.standard_fields if not detail else self.detail_fields
         event_entry = api_utils.object_to_dict(
             event,
             link_resource='nodes',
@@ -1896,9 +1894,9 @@ class NodeHistoryController(rest.RestController):
             # long.
             entry_len = len(event_entry['event'])
             if entry_len > 255:
-                event_entry['event'] = event_entry['event'][0:251] + '...'
+                event_entry['event'] = event_entry['event'][:251] + '...'
             else:
-                event_entry['event'] = event_entry['event'][0:entry_len]
+                event_entry['event'] = event_entry['event'][:entry_len]
         # These records cannot be changed by the API consumer,
         # and updated_at gets handed up from the db model
         # regardless if we want it or not. As such, strip from
@@ -1906,9 +1904,7 @@ class NodeHistoryController(rest.RestController):
         event_entry.pop('updated_at')
         event_entry['links'] = [
             link.make_link(
-                'self', url,
-                'nodes',
-                '%s/history/%s' % (node_uuid, event.uuid)
+                'self', url, 'nodes', f'{node_uuid}/history/{event.uuid}'
             )
         ]
         return event_entry
@@ -2015,14 +2011,14 @@ class NodeChildrenController(rest.RestController):
         filters['parent_node'] = rpc_node.uuid
         nodes = objects.Node.list(api.request.context,
                                   filters=filters, fields=['uuid'])
-        node_list = []
-        for node in nodes:
-            node_list.append(node.uuid)
+        node_list = [node.uuid for node in nodes]
         # todo, need to check the format for links
         return {
             'children': node_list,
-            'links': link.make_link('children', url, 'nodes',
-                                    '?parent_node={}'.format(rpc_node.uuid))}
+            'links': link.make_link(
+                'children', url, 'nodes', f'?parent_node={rpc_node.uuid}'
+            ),
+        }
 
 
 class NodesController(rest.RestController):
@@ -2110,8 +2106,7 @@ class NodesController(rest.RestController):
             # endpoint.
             return
 
-        subcontroller = self._subcontroller_map.get(remainder[0])
-        if subcontroller:
+        if subcontroller := self._subcontroller_map.get(remainder[0]):
             return subcontroller(node_ident=ident), remainder[1:]
 
     def _filter_by_conductor(self, nodes, conductor):
@@ -2183,11 +2178,11 @@ class NodesController(rest.RestController):
             'include_children': include_children,
             'parent_node': parent_node,
         }
-        filters = {}
-        for key, value in possible_filters.items():
-            if value is not None:
-                filters[key] = value
-
+        filters = {
+            key: value
+            for key, value in possible_filters.items()
+            if value is not None
+        }
         if fields:
             obj_fields = fields[:]
             required_object_fields = ('allocation_id', 'chassis_id',
@@ -2684,8 +2679,7 @@ class NodesController(rest.RestController):
 
         reject_patch_in_newer_versions(patch)
 
-        traits = api_utils.get_patch_values(patch, '/traits')
-        if traits:
+        if traits := api_utils.get_patch_values(patch, '/traits'):
             msg = _("Cannot update node traits via node patch. Node traits "
                     "should be updated via the node traits API.")
             raise exception.Invalid(msg)
@@ -2708,8 +2702,7 @@ class NodesController(rest.RestController):
         for network_data in network_data_fields:
             validate_network_data(network_data)
 
-        parent_node = api_utils.get_patch_values(patch, '/parent_node')
-        if parent_node:
+        if parent_node := api_utils.get_patch_values(patch, '/parent_node'):
             try:
                 # Verify we can see the parent node
                 api_utils.check_node_policy_and_retrieve(

@@ -81,9 +81,8 @@ _RAID_APPLY_CONFIGURATION_ARGSINFO = {
     }
 }
 
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
-COMMON_PROPERTIES.update(agent_base.VENDOR_PROPERTIES)
+COMMON_PROPERTIES = REQUIRED_PROPERTIES | OPTIONAL_PROPERTIES
+COMMON_PROPERTIES |= agent_base.VENDOR_PROPERTIES
 
 PARTITION_IMAGE_LABELS = ('kernel', 'ramdisk', 'root_gb', 'root_mb', 'swap_mb',
                           'ephemeral_mb', 'ephemeral_format', 'configdrive',
@@ -141,9 +140,8 @@ def validate_image_proxies(node):
     """
     invalid_proxies = {}
     for scheme in ('http', 'https'):
-        proxy_param = 'image_%s_proxy' % scheme
-        proxy = node.driver_info.get(proxy_param)
-        if proxy:
+        proxy_param = f'image_{scheme}_proxy'
+        if proxy := node.driver_info.get(proxy_param):
             chunks = urlparse.urlparse(proxy)
             # NOTE(vdrok) If no scheme specified, this is still a valid
             # proxy address. It is also possible for a proxy to have a
@@ -519,9 +517,8 @@ class AgentDeploy(CustomAgentDeploy):
 
         proxies = {}
         for scheme in ('http', 'https'):
-            proxy_param = 'image_%s_proxy' % scheme
-            proxy = node.driver_info.get(proxy_param)
-            if proxy:
+            proxy_param = f'image_{scheme}_proxy'
+            if proxy := node.driver_info.get(proxy_param):
                 proxies[scheme] = proxy
         if proxies:
             image_info['proxies'] = proxies

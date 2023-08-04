@@ -164,20 +164,22 @@ class AllocationsController(pecan.rest.RestController):
         # If the user is not allowed to see everything, we need to filter
         # based upon access rights.
         cdict = api.request.context.to_policy_values()
-        if cdict.get('system_scope') != 'all' and not parent_node:
-            # The user is a project scoped, and there is not an explicit
-            # parent node which will be returned.
-            if not api_utils.check_policy_true(
-                    'baremetal:allocation:list_all'):
-                # If the user cannot see everything via the policy,
-                # we need to filter the view down to only what they should
-                # be able to see in the database.
-                owner = cdict.get('project_id')
-        else:
+        if cdict.get('system_scope') == 'all':
             # Override if any node_ident was submitted in since this
             # is a subresource query.
             node_ident = parent_node
 
+        elif parent_node:
+            # Override if any node_ident was submitted in since this
+            # is a subresource query.
+            node_ident = parent_node
+
+        elif not api_utils.check_policy_true(
+                    'baremetal:allocation:list_all'):
+            # If the user cannot see everything via the policy,
+            # we need to filter the view down to only what they should
+            # be able to see in the database.
+            owner = cdict.get('project_id')
         marker_obj = None
         if marker:
             marker_obj = objects.Allocation.get_by_uuid(api.request.context,
@@ -209,10 +211,11 @@ class AllocationsController(pecan.rest.RestController):
             'owner': owner
         }
 
-        filters = {}
-        for key, value in possible_filters.items():
-            if value is not None:
-                filters[key] = value
+        filters = {
+            key: value
+            for key, value in possible_filters.items()
+            if value is not None
+        }
         allocations = objects.Allocation.list(api.request.context,
                                               limit=limit,
                                               marker=marker_obj,
@@ -365,8 +368,7 @@ class AllocationsController(pecan.rest.RestController):
             # an owner - But we can only do this with when new defaults are
             # enabled.
             project_id = cdict.get('project_id')
-            req_alloc_owner = allocation.get('owner')
-            if req_alloc_owner:
+            if req_alloc_owner := allocation.get('owner'):
                 if not api_utils.check_policy_true(
                         'baremetal:allocation:create_restricted'):
                     if req_alloc_owner != project_id:
@@ -378,9 +380,6 @@ class AllocationsController(pecan.rest.RestController):
                                 ) % {'req_owner': req_alloc_owner,
                                      'project': project_id}
                         raise exception.NotAuthorized(msg)
-                # NOTE(TheJulia): IF not restricted, i.e. else above,
-                # their supplied allocation owner is okay, they are allowed
-                # to provide an override by policy.
             else:
                 # An allocation owner was not supplied, we need to save one.
                 allocation['owner'] = project_id

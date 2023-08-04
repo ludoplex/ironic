@@ -148,8 +148,9 @@ def _get_capabilities_properties_without_ipmi(d_info, cap_props,
         capabilities['server_model'] = irmc.snmp.get_server_model(
             snmp_client)
 
-    capabilities = utils.get_updated_capabilities(current_cap, capabilities)
-    if capabilities:
+    if capabilities := utils.get_updated_capabilities(
+        current_cap, capabilities
+    ):
         props['capabilities'] = capabilities
 
     return props
@@ -185,11 +186,11 @@ def _inspect_hardware(node, existing_traits=None, **kwargs):
     fpga_ids = [fpga_id.lower() for fpga_id in CONF.irmc.fpga_ids]
 
     # if gpu_ids = [], pci_gpu_devices will not be inspected
-    if len(gpu_ids) == 0:
+    if not gpu_ids:
         capabilities_props.remove('pci_gpu_devices')
 
     # if fpga_ids = [], cpu_fpga will not be inspected
-    if len(fpga_ids) == 0:
+    if not fpga_ids:
         capabilities_props.remove('cpu_fpga')
 
     try:
@@ -219,8 +220,8 @@ def _inspect_hardware(node, existing_traits=None, **kwargs):
                 capabilities.pop('trusted_boot', None)
                 capabilities = utils.get_updated_capabilities(
                     node.properties.get('capabilities', ''), capabilities)
-                if capabilities:
-                    props['capabilities'] = capabilities
+            if capabilities:
+                props['capabilities'] = capabilities
 
         else:
             props = _get_capabilities_properties_without_ipmi(

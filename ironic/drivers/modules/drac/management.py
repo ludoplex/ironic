@@ -162,12 +162,14 @@ def _get_next_persistent_boot_mode(node):
                   {'node_uuid': node.uuid, 'error': exc})
         raise exception.DracOperationError(error=exc)
 
-    next_persistent_boot_mode = None
-    for mode in boot_modes:
-        if mode.is_next and mode.id != _NON_PERSISTENT_BOOT_MODE:
-            next_persistent_boot_mode = mode.id
-            break
-
+    next_persistent_boot_mode = next(
+        (
+            mode.id
+            for mode in boot_modes
+            if mode.is_next and mode.id != _NON_PERSISTENT_BOOT_MODE
+        ),
+        None,
+    )
     if not next_persistent_boot_mode:
         message = _('List of boot modes, %(list_boot_modes)s, does not '
                     'contain a persistent mode') % {
@@ -186,23 +188,21 @@ def _is_boot_order_flexibly_programmable(persistent, bios_settings):
 
 def _flexibly_program_boot_order(device, drac_boot_mode):
     if device == boot_devices.DISK:
-        if drac_boot_mode == 'Bios':
-            bios_settings = {'SetBootOrderFqdd1': 'HardDisk.List.1-1'}
-        else:
-            # 'Uefi'
-            bios_settings = {
+        return (
+            {'SetBootOrderFqdd1': 'HardDisk.List.1-1'}
+            if drac_boot_mode == 'Bios'
+            else {
                 'SetBootOrderFqdd1': '*.*.*',  # Disks, which are all else
                 'SetBootOrderFqdd2': 'NIC.*.*',
                 'SetBootOrderFqdd3': 'Optical.*.*',
                 'SetBootOrderFqdd4': 'Floppy.*.*',
             }
+        )
     elif device == boot_devices.PXE:
-        bios_settings = {'SetBootOrderFqdd1': 'NIC.*.*'}
+        return {'SetBootOrderFqdd1': 'NIC.*.*'}
     else:
         # boot_devices.CDROM
-        bios_settings = {'SetBootOrderFqdd1': 'Optical.*.*'}
-
-    return bios_settings
+        return {'SetBootOrderFqdd1': 'Optical.*.*'}
 
 
 def _validate_conf_mold(data):
@@ -242,8 +242,7 @@ def set_boot_device(node, device, persistent=False):
     if node.driver_internal_info.get("clean_steps"):
         if node.driver_internal_info.get("clean_steps")[0].get(
                 'step') in _CLEAR_JOBS_CLEAN_STEPS:
-            unfinished_jobs = drac_job.list_unfinished_jobs(node)
-            if unfinished_jobs:
+            if unfinished_jobs := drac_job.list_unfinished_jobs(node):
                 validate_job_queue = False
                 client.delete_jobs(job_ids=[job.id for job in unfinished_jobs])
 
@@ -273,11 +272,7 @@ def set_boot_device(node, device, persistent=False):
                 break
 
         if drac_boot_device:
-            if persistent:
-                boot_list = persistent_boot_mode
-            else:
-                boot_list = _NON_PERSISTENT_BOOT_MODE
-
+            boot_list = persistent_boot_mode if persistent else _NON_PERSISTENT_BOOT_MODE
             client.change_boot_device_order(boot_list, drac_boot_device)
         else:
             # No DRAC boot device of the type requested by the argument
@@ -292,26 +287,27 @@ def set_boot_device(node, device, persistent=False):
             # extra reboot. Otherwise, this function cannot satisfy the
             # request, because it was called with an invalid device.
             bios_settings = client.list_bios_settings(by_name=True)
-            if _is_boot_order_flexibly_programmable(persistent, bios_settings):
-                drac_boot_mode = bios_settings['BootMode'].current_value
-                if drac_boot_mode not in _DRAC_BOOT_MODES:
-                    message = _("DRAC reported unknown boot mode "
-                                "'%(drac_boot_mode)s'") % {
-                                    'drac_boot_mode': drac_boot_mode}
-                    LOG.error('DRAC driver failed to change boot device order '
-                              'for node %(node_uuid)s. Reason: %(message)s.',
-                              {'node_uuid': node.uuid, 'message': message})
-                    raise exception.DracOperationError(error=message)
-
-                flexibly_program_settings = _flexibly_program_boot_order(
-                    device, drac_boot_mode)
-                client.set_bios_settings(flexibly_program_settings)
-            else:
+            if not _is_boot_order_flexibly_programmable(
+                persistent, bios_settings
+            ):
                 raise exception.InvalidParameterValue(
                     _("set_boot_device called with invalid device "
                       "'%(device)s' for node %(node_id)s.") %
                     {'device': device, 'node_id': node.uuid})
 
+            drac_boot_mode = bios_settings['BootMode'].current_value
+            if drac_boot_mode not in _DRAC_BOOT_MODES:
+                message = _("DRAC reported unknown boot mode "
+                            "'%(drac_boot_mode)s'") % {
+                                'drac_boot_mode': drac_boot_mode}
+                LOG.error('DRAC driver failed to change boot device order '
+                          'for node %(node_uuid)s. Reason: %(message)s.',
+                          {'node_uuid': node.uuid, 'message': message})
+                raise exception.DracOperationError(error=message)
+
+            flexibly_program_settings = _flexibly_program_boot_order(
+                device, drac_boot_mode)
+            client.set_bios_settings(flexibly_program_settings)
         job_id = client.commit_pending_bios_changes()
         job_entry = client.get_job(job_id)
 
@@ -555,10 +551,9 @@ class DracRedfishManagement(redfish_management.RedfishManagement):
                          {'node': node.uuid,
                           'task_monitor_url': task_monitor_url})
 
-                # If import executed as part of import_export_configuration
-                export_configuration_location = node.driver_internal_info.get(
-                    'export_configuration_location')
-                if export_configuration_location:
+                if export_configuration_location := node.driver_internal_info.get(
+                    'export_configuration_location'
+                ):
                     # then do sync export configuration before finishing
                     self._cleanup_export_substep(node)
                     try:
@@ -738,10 +733,7 @@ class DracWSManManagement(base.ManagementInterface):
         node = task.node
 
         boot_device = node.driver_internal_info.get('drac_boot_device')
-        if boot_device is not None:
-            return boot_device
-
-        return _get_boot_device(node)
+        return boot_device if boot_device is not None else _get_boot_device(node)
 
     @METRICS.timer('DracManagement.set_boot_device')
     @task_manager.require_exclusive_lock

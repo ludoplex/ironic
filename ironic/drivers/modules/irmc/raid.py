@@ -87,7 +87,7 @@ def _get_raid_adapter(node):
     try:
         return client.elcm.get_raid_adapter(irmc_info)
     except client.elcm.ELCMProfileNotFound:
-        reason = ('Cannot find any RAID profile in "%s"' % node.uuid)
+        reason = f'Cannot find any RAID profile in "{node.uuid}"'
         raise exception.IRMCOperationError(operation='RAID config',
                                            error=reason)
 
@@ -120,12 +120,11 @@ def _get_physical_disk(node):
 
     physical_disk_dict = {}
     raid_adapter = _get_raid_adapter(node)
-    physical_disks = raid_adapter['Server']['HWConfigurationIrmc'][
-        'Adapters']['RAIDAdapter'][0]['PhysicalDisks']
-
-    if physical_disks:
+    if physical_disks := raid_adapter['Server']['HWConfigurationIrmc'][
+        'Adapters'
+    ]['RAIDAdapter'][0]['PhysicalDisks']:
         for disks in physical_disks['PhysicalDisk']:
-            physical_disk_dict.update({disks['Slot']: disks['Type']})
+            physical_disk_dict[disks['Slot']] = disks['Type']
 
     return physical_disk_dict
 
@@ -222,16 +221,14 @@ def _validate_logical_drive_capacity(disk, valid_disk_slots):
     physical_disk_list = []
 
     for size in physical_disks:
-        size_gb.update({size['@Number']: size['Size']['#text']})
+        size_gb[size['@Number']] = size['Size']['#text']
         all_volume_list.append(size['Size']['#text'])
 
     factor = RAID_LEVELS[disk['raid_level']]['factor']
 
     if disk.get('physical_disks'):
-        selected_disks = \
-            [physical_disk for physical_disk in disk['physical_disks']]
-        for volume in selected_disks:
-            physical_disk_list.append(size_gb[volume])
+        selected_disks = list(disk['physical_disks'])
+        physical_disk_list.extend(size_gb[volume] for volume in selected_disks)
         if disk['raid_level'] == '10':
             valid_capacity = \
                 min(physical_disk_list) * (len(physical_disk_list) / 2)
@@ -245,7 +242,8 @@ def _validate_logical_drive_capacity(disk, valid_disk_slots):
 
     if disk['size_gb'] > valid_capacity:
         raise exception.InvalidParameterValue(
-            'Insufficient disk capacity with %s GB' % disk['size_gb'])
+            f"Insufficient disk capacity with {disk['size_gb']} GB"
+        )
 
     if disk['size_gb'] == valid_capacity:
         disk['size_gb'] = 'MAX'
@@ -261,29 +259,28 @@ def _validate_physical_disks(node, logical_disks):
     raid_adapter = _get_raid_adapter(node)
     physical_disk_dict = _get_physical_disk(node)
     if raid_adapter is None:
-        reason = ('Cannot find any raid profile in "%s"' % node.uuid)
+        reason = f'Cannot find any raid profile in "{node.uuid}"'
         raise exception.IRMCOperationError(operation='RAID config',
                                            error=reason)
     if physical_disk_dict is None:
-        reason = ('Cannot find any physical disks in "%s"' % node.uuid)
+        reason = f'Cannot find any physical disks in "{node.uuid}"'
         raise exception.IRMCOperationError(operation='RAID config',
                                            error=reason)
     valid_disks = raid_adapter['Server']['HWConfigurationIrmc'][
         'Adapters']['RAIDAdapter'][0]['PhysicalDisks']
     if valid_disks is None:
-        reason = ('Cannot find any HDD over in the node "%s"' % node.uuid)
+        reason = f'Cannot find any HDD over in the node "{node.uuid}"'
         raise exception.IRMCOperationError(operation='RAID config',
                                            error=reason)
     valid_disk_slots = [slot['Slot'] for slot in valid_disks['PhysicalDisk']]
     remain_valid_disk_slots = list(valid_disk_slots)
-    number_of_valid_disks = len(valid_disk_slots)
     used_valid_disk_slots = []
 
+    number_of_valid_disks = len(valid_disk_slots)
     for disk in logical_disks:
         # Check raid_level value in the target_raid_config of node
         if disk.get('raid_level') not in RAID_LEVELS:
-            reason = ('RAID level is not supported: "%s"'
-                      % disk.get('raid_level'))
+            reason = f"""RAID level is not supported: "{disk.get('raid_level')}\""""
             raise exception.IRMCOperationError(operation='RAID config',
                                                error=reason)
 
@@ -293,8 +290,7 @@ def _validate_physical_disks(node, logical_disks):
         number_of_valid_disks = number_of_valid_disks - min_disk_value
 
         if remain_valid_disks < 0:
-            reason = ('Physical disks do not enough slots for raid "%s"'
-                      % disk['raid_level'])
+            reason = f"""Physical disks do not enough slots for raid "{disk['raid_level']}\""""
             raise exception.IRMCOperationError(operation='RAID config',
                                                error=reason)
 
@@ -323,15 +319,12 @@ def _validate_physical_disks(node, logical_disks):
                                                        error=reason)
                 type_of_disks.append(physical_disk_dict[int(phys_disk)])
                 if physical_disk_dict[int(phys_disk)] != type_of_disks[0]:
-                    reason = ('Cannot create RAID configuration with '
-                              'different hard drives type %s'
-                              % physical_disk_dict[int(phys_disk)])
+                    reason = f'Cannot create RAID configuration with different hard drives type {physical_disk_dict[int(phys_disk)]}'
                     raise exception.IRMCOperationError(operation='RAID config',
                                                        error=reason)
                 # Check physical disk values with used disk slots
                 if int(phys_disk) in used_valid_disk_slots:
-                    reason = ("Disk %s is already used in a RAID configuration"
-                              % disk['raid_level'])
+                    reason = f"Disk {disk['raid_level']} is already used in a RAID configuration"
                     raise exception.IRMCOperationError(operation='RAID config',
                                                        error=reason)
 
@@ -390,7 +383,8 @@ class IRMCRAID(base.RAIDInterface):
 
         if not node.target_raid_config:
             raise exception.MissingParameterValue(
-                'Missing the target_raid_config in node %s' % node.uuid)
+                f'Missing the target_raid_config in node {node.uuid}'
+            )
 
         target_raid_config = node.target_raid_config.copy()
 

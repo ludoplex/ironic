@@ -47,7 +47,7 @@ from ironic import objects
 # only if rootwrap_config does not contain the default value.
 
 if CONF.rootwrap_config != '/etc/ironic/rootwrap.conf':
-    root_helper = 'sudo ironic-rootwrap %s' % CONF.rootwrap_config
+    root_helper = f'sudo ironic-rootwrap {CONF.rootwrap_config}'
     CONF.set_default('root_helper', root_helper, 'ironic_lib')
 
 LOG = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ def _replace_lines_in_file(path, regex_pattern, replacement):
 
 
 def _replace_root_uuid(path, root_uuid):
-    root = 'UUID=%s' % root_uuid
+    root = f'UUID={root_uuid}'
     pattern = r'(\(\(|\{\{) ROOT (\)\)|\}\})'
     _replace_lines_in_file(path, pattern, root)
 
@@ -146,8 +146,8 @@ def _replace_boot_line(path, boot_mode, is_whole_disk_image,
         boot_line = '\\1=%s' % boot_disk_type
     else:
         pxe_cmd = 'goto' if ipxe_enabled else 'default'
-        pattern = '^%s .*$' % pxe_cmd
-        boot_line = '%s %s' % (pxe_cmd, boot_disk_type)
+        pattern = f'^{pxe_cmd} .*$'
+        boot_line = f'{pxe_cmd} {boot_disk_type}'
 
     _replace_lines_in_file(path, pattern, boot_line)
 
@@ -178,8 +178,11 @@ def switch_pxe_config(path, root_uuid_or_disk_id, boot_mode,
                          if the caller is using iPXE.
     :param anaconda_boot: if the boot is to be to an anaconda configuration.
     """
-    if (not (ramdisk_boot or anaconda_boot)
-            and root_uuid_or_disk_id is not None):
+    if (
+        not ramdisk_boot
+        and not anaconda_boot
+        and root_uuid_or_disk_id is not None
+    ):
         if not is_whole_disk_image:
             _replace_root_uuid(path, root_uuid_or_disk_id)
         else:
@@ -199,12 +202,9 @@ def check_for_missing_params(info_dict, error_msg, param_prefix=''):
     :raises: MissingParameterValue, if one or more parameters are
         empty in the provided dictionary.
     """
-    missing_info = []
-    for label, value in info_dict.items():
-        if not value:
-            missing_info.append(param_prefix + label)
-
-    if missing_info:
+    if missing_info := [
+        param_prefix + label for label, value in info_dict.items() if not value
+    ]:
         exc_msg = _("%(error_msg)s. Missing are: %(missing_info)s")
         raise exception.MissingParameterValue(
             exc_msg % {'error_msg': error_msg,
@@ -443,8 +443,7 @@ def get_ipxe_config_template(node):
     # loaders by architecture as they are all consistent. Where as PXE
     # could need to be grub for one arch, PXELINUX for another.
     configured_template = CONF.pxe.ipxe_config_template
-    override_template = node.driver_info.get('pxe_template')
-    if override_template:
+    if override_template := node.driver_info.get('pxe_template'):
         configured_template = override_template
     return configured_template or get_pxe_config_template(node)
 
@@ -464,11 +463,11 @@ def get_pxe_config_template(node):
     if config_template is None:
         cpu_arch = node.properties.get('cpu_arch')
         config_template = CONF.pxe.pxe_config_template_by_arch.get(cpu_arch)
-        if config_template is None:
-            if boot_mode_utils.get_boot_mode(node) == 'uefi':
-                config_template = CONF.pxe.uefi_pxe_config_template
-            else:
-                config_template = CONF.pxe.pxe_config_template
+    if config_template is None:
+        if boot_mode_utils.get_boot_mode(node) == 'uefi':
+            config_template = CONF.pxe.uefi_pxe_config_template
+        else:
+            config_template = CONF.pxe.pxe_config_template
 
     return config_template
 
@@ -597,12 +596,11 @@ def validate_image_properties(task, deploy_info):
         properties = ['kernel', 'ramdisk']
         image_props = {}
 
-    missing_props = []
-    for prop in properties:
-        if not (deploy_info.get(prop) or image_props.get(prop)):
-            missing_props.append(prop)
-
-    if missing_props:
+    if missing_props := [
+        prop
+        for prop in properties
+        if not (deploy_info.get(prop) or image_props.get(prop))
+    ]:
         props = ', '.join(missing_props)
         raise exception.MissingParameterValue(_(
             "Image %(image)s is missing the following properties: "
@@ -620,9 +618,7 @@ def get_boot_option(node):
     """
     if is_anaconda_deploy(node):
         return 'kickstart'
-    if is_ramdisk_deploy(node):
-        return 'ramdisk'
-    return 'local'
+    return 'ramdisk' if is_ramdisk_deploy(node) else 'local'
 
 
 # FIXME(dtantsur): relying on deploy interface name is an anti-pattern.
@@ -640,9 +636,7 @@ def is_anaconda_deploy(node):
     :returns: A boolean value of True when Anaconda deploy interface is in use
               otherwise False
     """
-    if node.get_interface('deploy') == 'anaconda':
-        return True
-    return False
+    return node.get_interface('deploy') == 'anaconda'
 
 
 def is_software_raid(node):
@@ -654,12 +648,10 @@ def is_software_raid(node):
     """
     target_raid_config = node.target_raid_config
     logical_disks = target_raid_config.get('logical_disks', [])
-    software_raid = False
-    for logical_disk in logical_disks:
-        if logical_disk.get('controller') == 'software':
-            software_raid = True
-            break
-    return software_raid
+    return any(
+        logical_disk.get('controller') == 'software'
+        for logical_disk in logical_disks
+    )
 
 
 IPA_URL_PARAM_NAME = 'ipa-api-url'
@@ -672,10 +664,9 @@ def build_agent_options(node):
     :returns: a dictionary containing the parameters to be passed to
         agent ramdisk.
     """
-    agent_config_opts = {
+    return {
         IPA_URL_PARAM_NAME: get_ironic_api_url(),
     }
-    return agent_config_opts
 
 
 def prepare_inband_cleaning(task, manage_boot=True):
@@ -847,8 +838,7 @@ def parse_instance_info(node, image_deploy=True):
     """
 
     info = node.instance_info
-    i_info = {}
-    i_info['image_source'] = info.get('image_source')
+    i_info = {'image_source': info.get('image_source')}
     iwdi = node.driver_internal_info.get('is_whole_disk_image')
     boot_option = get_boot_option(node)
     if not iwdi:
@@ -1093,11 +1083,11 @@ def _cache_and_convert_image(task, instance_info, image_info=None):
     _, image_path = cache_instance_image(task.context, task.node,
                                          force_raw=force_raw)
     if force_raw or image_info is None:
-        if image_info is None:
-            initial_format = instance_info.get('image_disk_format')
-        else:
-            initial_format = image_info.get('disk_format')
-
+        initial_format = (
+            instance_info.get('image_disk_format')
+            if image_info is None
+            else image_info.get('disk_format')
+        )
         if force_raw:
             instance_info['image_disk_format'] = 'raw'
         else:
@@ -1120,7 +1110,10 @@ def _cache_and_convert_image(task, instance_info, image_info=None):
             hash_value = image_info.get('os_hash_value')
             old_checksum = image_info.get('checksum')
 
-        if initial_format != instance_info['image_disk_format']:
+        if initial_format == instance_info['image_disk_format']:
+            instance_info['image_checksum'] = old_checksum
+
+        else:
             if not os_hash_algo or os_hash_algo == 'md5':
                 LOG.debug("Checksum algorithm for image %(image)s for node "
                           "%(node)s is set to '%(algo)s', changing to sha256",
@@ -1133,9 +1126,6 @@ def _cache_and_convert_image(task, instance_info, image_info=None):
                       {'image': image_path, 'node': task.node.uuid})
             instance_info['image_checksum'] = None
             hash_value = compute_image_checksum(image_path, os_hash_algo)
-        else:
-            instance_info['image_checksum'] = old_checksum
-
         instance_info['image_os_hash_algo'] = os_hash_algo
         instance_info['image_os_hash_value'] = hash_value
     else:
@@ -1177,7 +1167,7 @@ def _cache_and_convert_image(task, instance_info, image_info=None):
         [base_url, CONF.deploy.http_image_subdir,
          task.node.uuid])
     if file_extension:
-        http_image_url = http_image_url + file_extension
+        http_image_url += file_extension
     _validate_image_url(task.node, http_image_url, secret=False)
     instance_info['image_url'] = http_image_url
 
@@ -1253,18 +1243,17 @@ def build_instance_info_for_deploy(task):
             else:
                 raise
 
-    if not isap:
-        if not iwdi:
-            instance_info['image_type'] = images.IMAGE_TYPE_PARTITION
-            i_info = parse_instance_info(node)
-            instance_info.update(i_info)
-        else:
-            instance_info['image_type'] = images.IMAGE_TYPE_WHOLE_DISK
-    else:
+    if isap:
         # Call central parsing so we retain things like config drives.
         i_info = parse_instance_info(node, image_deploy=False)
         instance_info.update(i_info)
 
+    elif not iwdi:
+        instance_info['image_type'] = images.IMAGE_TYPE_PARTITION
+        i_info = parse_instance_info(node)
+        instance_info.update(i_info)
+    else:
+        instance_info['image_type'] = images.IMAGE_TYPE_WHOLE_DISK
     return instance_info
 
 
@@ -1320,8 +1309,8 @@ def populate_storage_driver_internal_info(task):
                                        'boot volume defined and no Fibre '
                                        'Channel boot support available.') %
                                      {'node': node.uuid})
-    boot_capability = ("%s_volume_boot" % vol_type)
-    deploy_capability = ("%s_volume_deploy" % vol_type)
+    boot_capability = f"{vol_type}_volume_boot"
+    deploy_capability = f"{vol_type}_volume_deploy"
     vol_uuid = boot_volume['uuid']
     if check_interface_capability(task.driver.boot, boot_capability):
         node.set_driver_internal_info('boot_from_volume', vol_uuid)
@@ -1363,8 +1352,7 @@ def tear_down_storage_configuration(task):
 def is_iscsi_boot(task):
     """Return true if booting from an iscsi volume."""
     node = task.node
-    volume = node.driver_internal_info.get('boot_from_volume')
-    if volume:
+    if volume := node.driver_internal_info.get('boot_from_volume'):
         try:
             boot_volume = objects.VolumeTarget.get_by_uuid(
                 task.context, volume)

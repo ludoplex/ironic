@@ -59,16 +59,20 @@ def convert_with_links(rpc_chassis, fields=None, sanitize=True):
     )
 
     url = api.request.public_url
-    chassis['nodes'] = [
-        link.make_link('self',
-                       url,
-                       'chassis',
-                       rpc_chassis.uuid + "/nodes"),
-        link.make_link('bookmark',
-                       url,
-                       'chassis',
-                       rpc_chassis.uuid + "/nodes",
-                       bookmark=True)],
+    chassis['nodes'] = (
+        [
+            link.make_link(
+                'self', url, 'chassis', f"{rpc_chassis.uuid}/nodes"
+            ),
+            link.make_link(
+                'bookmark',
+                url,
+                'chassis',
+                f"{rpc_chassis.uuid}/nodes",
+                bookmark=True,
+            ),
+        ],
+    )
 
     if fields is not None:
         api_utils.check_for_invalid_fields(fields, chassis)

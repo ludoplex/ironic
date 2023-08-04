@@ -44,7 +44,7 @@ class Version(object):
             headers, default_version, latest_version)
 
     def __repr__(self):
-        return '%s.%s' % (self.major, self.minor)
+        return f'{self.major}.{self.minor}'
 
     @staticmethod
     def parse_headers(headers, default_version, latest_version):
@@ -58,11 +58,7 @@ class Version(object):
         """
         version_str = headers.get(Version.string, default_version)
 
-        if version_str.lower() == 'latest':
-            parse_str = latest_version
-        else:
-            parse_str = version_str
-
+        parse_str = latest_version if version_str.lower() == 'latest' else version_str
         try:
             version = tuple(int(i) for i in parse_str.split('.'))
         except ValueError:

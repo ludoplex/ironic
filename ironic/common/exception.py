@@ -786,7 +786,7 @@ class UnknownArgument(ClientSideError):
     def faultstring(self):
         return _('Unknown argument: "%(argname)s"%(msg)s') % {
             'argname': self.argname,
-            'msg': self.msg and ": " + self.msg or ""
+            'msg': self.msg and f": {self.msg}" or "",
         }
 
 
@@ -811,10 +811,7 @@ class UnknownAttribute(ClientSideError):
         Add a fieldname so that the whole hierarchy is displayed. Successive
         calls to this method will prepend ``name`` to the hierarchy of names.
         """
-        if self.fieldname is not None:
-            self.fieldname = "{}.{}".format(name, self.fieldname)
-        else:
-            self.fieldname = name
+        self.fieldname = name if self.fieldname is None else f"{name}.{self.fieldname}"
         super(UnknownAttribute, self).__init__(self.msg)
 
 

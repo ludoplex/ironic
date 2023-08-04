@@ -145,26 +145,24 @@ def _get_steps(task, interfaces, get_method, enabled=False,
     :returns: A list of step dictionaries
     """
     # Get steps from each interface
-    steps = list()
+    steps = []
     for interface in interfaces:
-        interface = getattr(task.driver, interface)
-        if interface:
+        if interface := getattr(task.driver, interface):
             # NOTE(janders) get all steps to start with, regardless of whether
             # enabled is True and priority is zero or not; we need to apply
             # priority overrides prior to filtering out disabled steps
-            interface_steps = [x for x in getattr(interface, get_method)(task)]
+            interface_steps = list(getattr(interface, get_method)(task))
             steps.extend(interface_steps)
     # Iterate over steps to apply prio overrides if set
     if prio_overrides is not None:
         for step in steps:
             override_key = '%(interface)s.%(step)s' % step
-            override_value = prio_overrides.get(override_key)
-            if override_value:
+            if override_value := prio_overrides.get(override_key):
                 step["priority"] = int(override_value)
     # NOTE(janders) If enabled is set to True, we filter out steps with zero
     # priority now, after applying priority overrides
     if enabled:
-        steps = [x for x in steps if not (x.get('priority') == 0)]
+        steps = [x for x in steps if x.get('priority') != 0]
     if sort_step_key:
         steps = _sorted_steps(steps, sort_step_key)
     return steps
@@ -187,7 +185,7 @@ def _get_cleaning_steps(task, enabled=False, sort=True):
     if CONF.conductor.clean_step_priority_override:
         csp_override = {}
         for element in CONF.conductor.clean_step_priority_override:
-            csp_override.update(element)
+            csp_override |= element
 
         cleaning_steps = _get_steps(task, CLEANING_INTERFACE_PRIORITY,
                                     'get_clean_steps', enabled=enabled,
@@ -236,21 +234,26 @@ def _get_verify_steps(task, enabled=False, sort=True):
     :returns: A list of verify step dictionaries
     """
     sort_key = _verify_step_key if sort else None
-    if CONF.conductor.verify_step_priority_override:
-        vsp_override = {}
-        for element in CONF.conductor.verify_step_priority_override:
-            vsp_override.update(element)
+    if not CONF.conductor.verify_step_priority_override:
+        return _get_steps(
+            task,
+            VERIFYING_INTERFACE_PRIORITY,
+            'get_verify_steps',
+            enabled=enabled,
+            sort_step_key=sort_key,
+        )
+    vsp_override = {}
+    for element in CONF.conductor.verify_step_priority_override:
+        vsp_override |= element
 
-        verify_steps = _get_steps(task, VERIFYING_INTERFACE_PRIORITY,
-                                  'get_verify_steps', enabled=enabled,
-                                  sort_step_key=sort_key,
-                                  prio_overrides=vsp_override)
-
-    else:
-        verify_steps = _get_steps(task, VERIFYING_INTERFACE_PRIORITY,
-                                  'get_verify_steps', enabled=enabled,
-                                  sort_step_key=sort_key)
-    return verify_steps
+    return _get_steps(
+        task,
+        VERIFYING_INTERFACE_PRIORITY,
+        'get_verify_steps',
+        enabled=enabled,
+        sort_step_key=sort_key,
+        prio_overrides=vsp_override,
+    )
 
 
 def set_node_cleaning_steps(task, disable_ramdisk=False):
@@ -472,8 +475,9 @@ def _validate_deploy_steps_unique(user_steps):
     # specified at most once.
     errors = []
     counter = collections.Counter(step_id(step) for step in user_steps)
-    duplicates = {step_id for step_id, count in counter.items() if count > 1}
-    if duplicates:
+    if duplicates := {
+        step_id for step_id, count in counter.items() if count > 1
+    }:
         err = (_('deploy steps from all deploy templates matching this '
                  'node\'s instance traits cannot have the same interface '
                  'and step. Duplicate deploy steps for %(duplicates)s') %
@@ -533,8 +537,7 @@ def _validate_user_step(task, user_step, driver_step, step_type,
     # Check that the user-specified arguments are valid
     argsinfo = driver_step.get('argsinfo') or {}
     user_args = user_step.get('args') or {}
-    unexpected = set(user_args) - set(argsinfo)
-    if unexpected:
+    if unexpected := set(user_args) - set(argsinfo):
         error = (_('%(type)s step %(step)s has these unexpected arguments: '
                    '%(unexpected)s') %
                  {'type': step_type, 'step': user_step,

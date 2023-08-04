@@ -65,7 +65,7 @@ def main():
     if not new_path:
         return
 
-    no_ansi_filename = "{}_no_ansi_{}.log".format(guest_name, NOW)
+    no_ansi_filename = f"{guest_name}_no_ansi_{NOW}.log"
     no_ansi_path = os.path.join(VM_LOG_DIR, no_ansi_filename)
     create_no_ansi_file(new_path, no_ansi_path)
 
@@ -81,7 +81,7 @@ def create_no_ansi_file(source_filename, dest_filename):
 
 
 def get_console_log_path(guest_name):
-    logfile_name = "{}_console.log".format(guest_name)
+    logfile_name = f"{guest_name}_console.log"
     return os.path.join(VM_LOG_DIR, logfile_name)
 
 
@@ -90,7 +90,7 @@ def console_log_exists(guest_name):
 
 
 def move_console_log(guest_name):
-    new_logfile_name = "{}_console_{}.log".format(guest_name, NOW)
+    new_logfile_name = f"{guest_name}_console_{NOW}.log"
     new_path = os.path.join(VM_LOG_DIR, new_logfile_name)
     if os.path.exists(new_path):
         return False
@@ -102,14 +102,13 @@ def remove_ansi_codes(data):
     """Remove any ansi codes from the provided string"""
     output = ''
     while data:
-        result = ANSI_ESCAPE_RE.match(data)
-        if not result:
+        if result := ANSI_ESCAPE_RE.match(data):
+            data = data[result.end():]
+        else:
             output += data[0]
             data = data[1:]
-        else:
-            data = data[result.end():]
     return output
 
 
-if '__main__' == __name__:
+if __name__ == '__main__':
     sys.exit(main())

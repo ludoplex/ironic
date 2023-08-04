@@ -40,26 +40,25 @@ def _list_table(add, headers, data, title='', columns=None):
     :param headers: List of header values.
     :param data: Iterable of row data, yielding lists or tuples with rows.
     """
-    add('.. list-table:: %s' % title)
+    add(f'.. list-table:: {title}')
     add('   :header-rows: 1')
     if columns:
-        add('   :widths: %s' % (','.join(str(c) for c in columns)))
+        add(f"   :widths: {','.join(str(c) for c in columns)}")
     add('')
-    add('   - * %s' % headers[0])
+    add(f'   - * {headers[0]}')
     for h in headers[1:]:
-        add('     * %s' % h)
+        add(f'     * {h}')
     for row in data:
-        add('   - * %s' % row[0])
+        add(f'   - * {row[0]}')
         for r in row[1:]:
-            lines = str(r).splitlines()
-            if not lines:
+            if lines := str(r).splitlines():
+                # potentially multi-line string
+                add(f'     * {lines[0]}')
+                for l in lines[1:]:
+                    add(f'       {l}')
+            else:
                 # empty string
                 add('     * ')
-            else:
-                # potentially multi-line string
-                add('     * %s' % lines[0])
-                for l in lines[1:]:
-                    add('       %s' % l)
     add('')
 
 
@@ -88,11 +87,12 @@ def _init_steps_by_driver():
 
     for interface_name in sorted(driver_factory.driver_base.ALL_INTERFACES):
         if DEBUG:
-            LOG.info('[{}] probing available plugins for interface {}'.format(
-                __name__, interface_name))
+            LOG.info(
+                f'[{__name__}] probing available plugins for interface {interface_name}'
+            )
 
         loader = stevedore.ExtensionManager(
-            'ironic.hardware.interfaces.{}'.format(interface_name),
+            f'ironic.hardware.interfaces.{interface_name}',
             invoke_on_load=False,
         )
 
@@ -127,12 +127,7 @@ def _init_steps_by_driver():
 def _format_args(argsinfo):
     argsinfo = argsinfo or {}
     return '\n\n'.join(
-        '``{}``{}{} {}'.format(
-            argname,
-            ' (*required*)' if argdetail.get('required') else '',
-            ' --' if argdetail.get('description') else '',
-            argdetail.get('description', ''),
-        )
+        f"``{argname}``{' (*required*)' if argdetail.get('required') else ''}{' --' if argdetail.get('description') else ''} {argdetail.get('description', '')}"
         for argname, argdetail in sorted(argsinfo.items())
     )
 
@@ -149,7 +144,7 @@ class AutomatedStepsDirective(rst.Directive):
         if series != 'cleaning':
             raise NotImplementedError('Showing deploy steps not implemented')
 
-        source_name = '<{}>'.format(__name__)
+        source_name = f'<{__name__}>'
 
         result = ViewList()
 
@@ -158,24 +153,31 @@ class AutomatedStepsDirective(rst.Directive):
             if not interface_info:
                 continue
 
-            title = '{} Interface'.format(interface_name.capitalize())
+            title = f'{interface_name.capitalize()} Interface'
             result.append(title, source_name)
             result.append('~' * len(title), source_name)
 
             for driver_name, steps in sorted(interface_info.items()):
 
                 _list_table(
-                    title='{} cleaning steps'.format(driver_name),
+                    title=f'{driver_name} cleaning steps',
                     add=lambda x: result.append(x, source_name),
-                    headers=['Name', 'Details', 'Priority', 'Stoppable', 'Arguments'],
+                    headers=[
+                        'Name',
+                        'Details',
+                        'Priority',
+                        'Stoppable',
+                        'Arguments',
+                    ],
                     columns=[20, 30, 10, 10, 30],
                     data=(
-                        ('``{}``'.format(s['step']),
-                         s['doc'],
-                         s['priority'],
-                         'yes' if s['abortable'] else 'no',
-                         _format_args(s['argsinfo']),
-                         )
+                        (
+                            f"``{s['step']}``",
+                            s['doc'],
+                            s['priority'],
+                            'yes' if s['abortable'] else 'no',
+                            _format_args(s['argsinfo']),
+                        )
                         for s in steps
                     ),
                 )

@@ -335,10 +335,7 @@ def on_enter(new_state, event):
               new_state, event)
 
 
-watchers = {}
-watchers['on_exit'] = on_exit
-watchers['on_enter'] = on_enter
-
+watchers = {'on_exit': on_exit, 'on_enter': on_enter}
 machine = fsm.FSM()
 
 # Add stable states

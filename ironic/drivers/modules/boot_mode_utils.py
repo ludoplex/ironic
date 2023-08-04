@@ -120,7 +120,7 @@ def sync_boot_mode(task):
 
         _set_boot_mode_on_bm(task, default_boot_mode)
 
-    elif not ironic_boot_mode and bm_boot_mode:
+    elif not ironic_boot_mode:
         node.set_driver_internal_info('deploy_boot_mode', bm_boot_mode)
         node.save()
 
@@ -128,7 +128,7 @@ def sync_boot_mode(task):
                   "%(boot_mode)s reported by the driver",
                   {'uuid': node.uuid, 'boot_mode': bm_boot_mode})
 
-    elif ironic_boot_mode and not bm_boot_mode:
+    elif not bm_boot_mode:
         # NOTE(etingof): if only ironic boot mode is known, try to synchronize
         # (e.g. ironic -> bm) and do not fail if setting boot mode is not
         # supported by the underlying hardware type
@@ -261,8 +261,7 @@ def get_boot_mode(node):
     :raises: InvalidParameterValue, if the node boot mode disagrees with
         the boot mode set to node properties/capabilities
     """
-    boot_mode = get_boot_mode_for_deploy(node)
-    if boot_mode:
+    if boot_mode := get_boot_mode_for_deploy(node):
         return boot_mode
     return CONF.deploy.default_boot_mode
 

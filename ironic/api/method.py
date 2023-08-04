@@ -94,10 +94,7 @@ def body(body_arg):
         @functools.wraps(function)
         def inner_body(*args, **kwargs):
 
-            if pecan.request.body:
-                data = pecan.request.json
-            else:
-                data = {}
+            data = pecan.request.json if pecan.request.body else {}
             if isinstance(data, dict):
                 # remove any keyword arguments which pecan has
                 # extracted from the body
@@ -107,7 +104,9 @@ def body(body_arg):
             kwargs[body_arg] = data
 
             return function(*args, **kwargs)
+
         return inner_body
+
     return inner_function
 
 
@@ -123,7 +122,6 @@ def format_exception(excinfo, debug=False):
                  faultstring=faultstring)
         LOG.debug("Client-side error: %s", r['faultstring'])
         r['debuginfo'] = None
-        return r
     else:
         faultstring = str(error)
         debuginfo = "\n".join(traceback.format_exception(*excinfo))
@@ -133,8 +131,6 @@ def format_exception(excinfo, debug=False):
 
         faultcode = getattr(error, 'faultcode', 'Server')
         r = dict(faultcode=faultcode, faultstring=faultstring)
-        if debug:
-            r['debuginfo'] = debuginfo
-        else:
-            r['debuginfo'] = None
-        return r
+        r['debuginfo'] = debuginfo if debug else None
+
+    return r

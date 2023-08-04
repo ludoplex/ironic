@@ -15,6 +15,7 @@
 """
 Common functionalities shared between different iRMC modules.
 """
+
 import json
 import os
 import re
@@ -123,13 +124,15 @@ SNMP_V3_DEPRECATED_PROPERTIES = {
 }
 
 
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
-COMMON_PROPERTIES.update(OPTIONAL_DRIVER_INFO_PROPERTIES)
-COMMON_PROPERTIES.update(SNMP_PROPERTIES)
-COMMON_PROPERTIES.update(SNMP_V3_REQUIRED_PROPERTIES)
-COMMON_PROPERTIES.update(SNMP_V3_OPTIONAL_PROPERTIES)
-COMMON_PROPERTIES.update(SNMP_V3_DEPRECATED_PROPERTIES)
+COMMON_PROPERTIES = (
+    REQUIRED_PROPERTIES
+    | OPTIONAL_PROPERTIES
+    | OPTIONAL_DRIVER_INFO_PROPERTIES
+    | SNMP_PROPERTIES
+    | SNMP_V3_REQUIRED_PROPERTIES
+    | SNMP_V3_OPTIONAL_PROPERTIES
+    | SNMP_V3_DEPRECATED_PROPERTIES
+)
 
 
 def parse_driver_info(node):
@@ -147,8 +150,9 @@ def parse_driver_info(node):
         in the 'driver_info' property.
     """
     info = node.driver_info
-    missing_info = [key for key in REQUIRED_PROPERTIES if not info.get(key)]
-    if missing_info:
+    if missing_info := [
+        key for key in REQUIRED_PROPERTIES if not info.get(key)
+    ]:
         raise exception.MissingParameterValue(_(
             "Missing the following iRMC parameters in node's"
             " driver_info: %s.") % missing_info)
@@ -188,11 +192,9 @@ def parse_driver_info(node):
 
     # Check if verify_ca is a Boolean or a file/directory in the file-system
     if isinstance(verify_ca, str):
-        if ((os.path.isdir(verify_ca) and os.path.isabs(verify_ca))
-            or (os.path.isfile(verify_ca) and os.path.isabs(verify_ca))):
-            # If it's fullpath and dir/file, we don't need to do anything
-            pass
-        else:
+        if (not os.path.isdir(verify_ca) or not os.path.isabs(verify_ca)) and (
+            not os.path.isfile(verify_ca) or not os.path.isabs(verify_ca)
+        ):
             try:
                 d_info['irmc_verify_ca'] = strutils.bool_from_string(
                     verify_ca, strict=True)
@@ -203,10 +205,7 @@ def parse_driver_info(node):
                       'The value should be a Boolean or the path '
                       'to a file/directory, not "%(value)s"'
                       ) % {'value': verify_ca, 'node': node.uuid})
-    elif isinstance(verify_ca, bool):
-        # If it's a boolean it's grand, we don't need to do anything
-        pass
-    else:
+    elif not isinstance(verify_ca, bool):
         error_msgs.append(
             _('Invalid value type set in driver_info/irmc_verify_ca '
               'on node %(node)s. The value should be a Boolean or the path '
@@ -218,7 +217,7 @@ def parse_driver_info(node):
                  "driver_info:\n%s") % "\n".join(error_msgs))
         raise exception.InvalidParameterValue(msg)
 
-    d_info.update(_parse_snmp_driver_info(node, info))
+    d_info |= _parse_snmp_driver_info(node, info)
 
     return d_info
 
@@ -269,7 +268,7 @@ def _parse_snmp_driver_info(node, info):
                 "when FIPS mode is enabled."))
 
     else:
-        snmp_info.update(_parse_snmp_v3_info(node, info))
+        snmp_info |= _parse_snmp_v3_info(node, info)
 
     return snmp_info
 
@@ -289,29 +288,25 @@ def _parse_snmp_v3_info(node, info):
         try:
             snmp_info[param] = info[param]
         except KeyError:
-            if param == 'irmc_snmp_user':
-                if not security:
-                    missing_info.append(param)
-                else:
-                    LOG.warning(_("'irmc_snmp_security' parameter is "
-                                  "deprecated in favor of 'irmc_snmp_user' "
-                                  "parameter. Please set 'irmc_snmp_user' "
-                                  "and remove 'irmc_snmp_security' for node "
-                                  "%s."), node.uuid)
-                    # In iRMC, the username must start with a letter, so only
-                    # a string can be a valid username and a string from a
-                    # number is invalid.
-                    if not isinstance(security, str):
-                        raise exception.InvalidParameterValue(_(
-                            "Value '%s' is not a string for "
-                            "'irmc_snmp_security.") %
-                            info['irmc_snmp_security'])
-                    else:
-                        snmp_info['irmc_snmp_user'] = security
-                        security = None
-            else:
+            if (
+                param == 'irmc_snmp_user'
+                and not security
+                or param != 'irmc_snmp_user'
+            ):
                 missing_info.append(param)
-
+            else:
+                LOG.warning(_("'irmc_snmp_security' parameter is "
+                              "deprecated in favor of 'irmc_snmp_user' "
+                              "parameter. Please set 'irmc_snmp_user' "
+                              "and remove 'irmc_snmp_security' for node "
+                              "%s."), node.uuid)
+                if not isinstance(security, str):
+                    raise exception.InvalidParameterValue(_(
+                        "Value '%s' is not a string for "
+                        "'irmc_snmp_security.") %
+                        info['irmc_snmp_security'])
+                snmp_info['irmc_snmp_user'] = security
+                security = None
     if missing_info:
         raise exception.MissingParameterValue(_(
             "The following required SNMP parameters "
@@ -374,15 +369,15 @@ def get_irmc_client(node):
     """
     driver_info = parse_driver_info(node)
 
-    scci_client = scci.get_client(
+    return scci.get_client(
         driver_info['irmc_address'],
         driver_info['irmc_username'],
         driver_info['irmc_password'],
         port=driver_info['irmc_port'],
         auth_method=driver_info['irmc_auth_method'],
         verify=driver_info.get('irmc_verify_ca'),
-        client_timeout=driver_info['irmc_client_timeout'])
-    return scci_client
+        client_timeout=driver_info['irmc_client_timeout'],
+    )
 
 
 def update_ipmi_properties(task):
@@ -574,10 +569,8 @@ def _version_lt(v1, v2):
         v2_l.extend(['0'] * (len(v1_l) - len(v2_l)))
 
     for i in range(len(v1_l)):
-        if int(v1_l[i]) < int(v2_l[i]):
-            return True
-        elif int(v1_l[i]) > int(v2_l[i]):
-            return False
+        if int(v1_l[i]) != int(v2_l[i]):
+            return int(v1_l[i]) < int(v2_l[i])
     else:
         return False
 
@@ -591,10 +584,8 @@ def _version_le(v1, v2):
         v2_l.extend(['0'] * (len(v1_l) - len(v2_l)))
 
     for i in range(len(v1_l)):
-        if int(v1_l[i]) < int(v2_l[i]):
-            return True
-        elif int(v1_l[i]) > int(v2_l[i]):
-            return False
+        if int(v1_l[i]) != int(v2_l[i]):
+            return int(v1_l[i]) < int(v2_l[i])
     else:
         return True
 
@@ -653,9 +644,7 @@ def within_version_ranges(node, version_ranges):
             # firmware version is within it.
             min_ver = v_range.get('min')
             upper_ver = v_range.get('upper')
-            flag = True
-            if min_ver:
-                flag = _version_le(min_ver, fw_num)
+            flag = _version_le(min_ver, fw_num) if min_ver else True
             if flag and upper_ver:
                 flag = _version_lt(fw_num, upper_ver)
             return flag

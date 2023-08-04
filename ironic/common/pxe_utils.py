@@ -68,10 +68,7 @@ KERNEL_RAMDISK_LABELS = {'deploy': DEPLOY_KERNEL_RAMDISK_LABELS,
 
 
 def _get_root_dir(ipxe_enabled):
-    if ipxe_enabled:
-        return CONF.deploy.http_root
-    else:
-        return CONF.pxe.tftp_root
+    return CONF.deploy.http_root if ipxe_enabled else CONF.pxe.tftp_root
 
 
 def ensure_tree(path):
@@ -165,9 +162,10 @@ def _link_ip_address_pxe_configs(task, ipxe_enabled=False):
 
 def _get_pxe_grub_mac_path(mac, ipxe_enabled=False):
     root_dir = _get_root_dir(ipxe_enabled)
-    yield os.path.join(root_dir, "%s-%s-%s" %
-                       ("grub.cfg", "01", mac.replace(':', "-").lower()))
-    yield os.path.join(root_dir, mac + '.conf')
+    yield os.path.join(
+        root_dir, f"""grub.cfg-01-{mac.replace(':', "-").lower()}"""
+    )
+    yield os.path.join(root_dir, f'{mac}.conf')
 
 
 def _get_pxe_mac_path(mac, delimiter='-', client_id=None,
@@ -185,9 +183,7 @@ def _get_pxe_mac_path(mac, delimiter='-', client_id=None,
     """
     mac_file_name = mac.replace(':', delimiter).lower()
     if not ipxe_enabled:
-        hw_type = '01-'
-        if client_id:
-            hw_type = '20-'
+        hw_type = '20-' if client_id else '01-'
         mac_file_name = hw_type + mac_file_name
         return os.path.join(CONF.pxe.tftp_root, PXE_CFG_DIR_NAME,
                             mac_file_name)
@@ -203,9 +199,7 @@ def _get_pxe_ip_address_path(ip_address):
 
     """
     # grub2 bootloader needs ip based config file name.
-    return os.path.join(
-        CONF.pxe.tftp_root, ip_address + ".conf"
-    )
+    return os.path.join(CONF.pxe.tftp_root, f"{ip_address}.conf")
 
 
 def get_kernel_ramdisk_info(node_uuid, driver_info, mode='deploy',
@@ -381,8 +375,11 @@ def create_ipxe_boot_script():
     """Render the iPXE boot script into the HTTP root directory"""
     boot_script = utils.render_template(
         CONF.pxe.ipxe_boot_script,
-        {'ipxe_for_mac_uri': PXE_CFG_DIR_NAME + '/',
-         'ipxe_fallback_script': CONF.pxe.ipxe_fallback_script})
+        {
+            'ipxe_for_mac_uri': f'{PXE_CFG_DIR_NAME}/',
+            'ipxe_fallback_script': CONF.pxe.ipxe_fallback_script,
+        },
+    )
     bootfile_path = os.path.join(
         CONF.deploy.http_root,
         os.path.basename(CONF.pxe.ipxe_boot_script))
@@ -455,17 +452,15 @@ def _dhcp_option_file_or_url(task, urlboot=False, ip_version=None):
         # attribute flag.
         boot_file = deploy_utils.get_pxe_boot_file(task.node)
 
-    # NOTE(TheJulia): There are additional cases as we add new
-    # features, so the logic below is in the form of if/elif/elif
     if not urlboot:
         return boot_file
-    elif urlboot:
-        if CONF.my_ipv6 and ip_version == 6:
-            host = utils.wrap_ipv6(CONF.my_ipv6)
-        else:
-            host = utils.wrap_ipv6(CONF.pxe.tftp_server)
-        return "tftp://{host}/{boot_file}".format(host=host,
-                                                  boot_file=boot_file)
+    host = (
+        utils.wrap_ipv6(CONF.my_ipv6)
+        if CONF.my_ipv6 and ip_version == 6
+        else utils.wrap_ipv6(CONF.pxe.tftp_server)
+    )
+    return "tftp://{host}/{boot_file}".format(host=host,
+                                              boot_file=boot_file)
 
 
 def dhcp_options_for_instance(task, ipxe_enabled=False, url_boot=False,
@@ -487,10 +482,7 @@ def dhcp_options_for_instance(task, ipxe_enabled=False, url_boot=False,
     :returns: Dictionary to be sent to the networking service describing
               the DHCP options to be set.
     """
-    if ip_version:
-        use_ip_version = ip_version
-    else:
-        use_ip_version = int(CONF.pxe.ip_version)
+    use_ip_version = ip_version if ip_version else int(CONF.pxe.ip_version)
     dhcp_opts = []
     api = dhcp_factory.DHCPFactory().provider
     if use_ip_version == 4:
@@ -528,21 +520,31 @@ def dhcp_options_for_instance(task, ipxe_enabled=False, url_boot=False,
             # directly and is only sent in DHCPv6.
 
             if use_ip_version != 6:
-                dhcp_opts.append(
-                    {'opt_name': "tag:!ipxe,%s" % boot_file_param,
-                     'opt_value': boot_file}
-                )
-                dhcp_opts.append(
-                    {'opt_name': "tag:ipxe,%s" % boot_file_param,
-                     'opt_value': ipxe_script_url}
+                dhcp_opts.extend(
+                    (
+                        {
+                            'opt_name': f"tag:!ipxe,{boot_file_param}",
+                            'opt_value': boot_file,
+                        },
+                        {
+                            'opt_name': f"tag:ipxe,{boot_file_param}",
+                            'opt_value': ipxe_script_url,
+                        },
+                    )
                 )
             else:
-                dhcp_opts.append(
-                    {'opt_name': "tag:!ipxe6,%s" % boot_file_param,
-                     'opt_value': boot_file})
-                dhcp_opts.append(
-                    {'opt_name': "tag:ipxe6,%s" % boot_file_param,
-                     'opt_value': ipxe_script_url})
+                dhcp_opts.extend(
+                    (
+                        {
+                            'opt_name': f"tag:!ipxe6,{boot_file_param}",
+                            'opt_value': boot_file,
+                        },
+                        {
+                            'opt_name': f"tag:ipxe6,{boot_file_param}",
+                            'opt_value': ipxe_script_url,
+                        },
+                    )
+                )
         else:
             # !175 == non-iPXE.
             # http://ipxe.org/howto/dhcpd#ipxe-specific_options
@@ -551,14 +553,18 @@ def dhcp_options_for_instance(task, ipxe_enabled=False, url_boot=False,
                             'to a plugin aside from "neutron". Node %(name)s '
                             'may not receive proper DHCPv6 provided '
                             'boot parameters.', {'name': task.node.uuid})
-            # NOTE(TheJulia): This was added for ISC DHCPd support, however it
-            # appears that isc support was never added to neutron and is likely
-            # a down stream driver.
-            dhcp_opts.append({'opt_name': "!%s,%s" % (DHCP_IPXE_ENCAP_OPTS,
-                              boot_file_param),
-                              'opt_value': boot_file})
-            dhcp_opts.append({'opt_name': boot_file_param,
-                              'opt_value': ipxe_script_url})
+            dhcp_opts.extend(
+                (
+                    {
+                        'opt_name': f"!{DHCP_IPXE_ENCAP_OPTS},{boot_file_param}",
+                        'opt_value': boot_file,
+                    },
+                    {
+                        'opt_name': boot_file_param,
+                        'opt_value': ipxe_script_url,
+                    },
+                )
+            )
     else:
         dhcp_opts.append({'opt_name': boot_file_param,
                           'opt_value': boot_file})
@@ -574,27 +580,22 @@ def dhcp_options_for_instance(task, ipxe_enabled=False, url_boot=False,
                  'opt_value': prefix})
 
     if not url_boot:
-        dhcp_opts.append({'opt_name': DHCP_TFTP_SERVER_NAME,
-                          'opt_value': CONF.pxe.tftp_server})
-        dhcp_opts.append({'opt_name': DHCP_TFTP_SERVER_ADDRESS,
-                          'opt_value': CONF.pxe.tftp_server})
-    # NOTE(vsaienko) set this option specially for dnsmasq case as it always
-    # sets `siaddr` field which is treated by pxe clients as TFTP server
-    # see page 9 https://tools.ietf.org/html/rfc2131.
-    # If `server-ip-address` is not provided dnsmasq sets `siaddr` to dnsmasq's
-    # IP which breaks PXE booting as TFTP server is configured on ironic
-    # conductor host.
-    # http://thekelleys.org.uk/gitweb/?p=dnsmasq.git;a=blob;f=src/dhcp-common.c;h=eae9ae3567fe16eb979a484976c270396322efea;hb=a3303e196e5d304ec955c4d63afb923ade66c6e8#l572 # noqa
-    # There is an informational RFC which describes how options related to
-    # tftp 150,66 and siaddr should be used https://tools.ietf.org/html/rfc5859
-    # All dhcp servers we've tried: contrail/dnsmasq/isc just silently ignore
-    # unknown options but potentially it may blow up with others.
-    # Related bug was opened on Neutron side:
-    # https://bugs.launchpad.net/neutron/+bug/1723354
-    if not url_boot:
-        dhcp_opts.append({'opt_name': DHCP_SERVER_IP_ADDRESS,
-                          'opt_value': CONF.pxe.tftp_server})
-
+        dhcp_opts.extend(
+            (
+                {
+                    'opt_name': DHCP_TFTP_SERVER_NAME,
+                    'opt_value': CONF.pxe.tftp_server,
+                },
+                {
+                    'opt_name': DHCP_TFTP_SERVER_ADDRESS,
+                    'opt_value': CONF.pxe.tftp_server,
+                },
+                {
+                    'opt_name': DHCP_SERVER_IP_ADDRESS,
+                    'opt_value': CONF.pxe.tftp_server,
+                },
+            )
+        )
     # Append the IP version for all the configuration options
     for opt in dhcp_opts:
         opt.update({'ip_version': use_ip_version})
@@ -714,11 +715,11 @@ def get_instance_image_info(task, ipxe_enabled=False):
             # This is intended for Glance usage, but all image properties
             # should be routed through the image service request routing.
             for label in labels:
-                i_info[label] = str(image_properties[label + '_id'])
+                i_info[label] = str(image_properties[f'{label}_id'])
             node.instance_info = i_info
             node.save()
-        # TODO(TheJulia): Add functionality to look/grab the hints file
-        # for anaconda and just run with the entire path.
+            # TODO(TheJulia): Add functionality to look/grab the hints file
+            # for anaconda and just run with the entire path.
 
     if 'stage2' in anaconda_labels:
         # stage2: installer stage2 squashfs image
@@ -764,9 +765,7 @@ def get_instance_image_info(task, ipxe_enabled=False):
             # template.
             node.set_driver_internal_info(
                 'ks_template',
-                'file://' + os.path.abspath(
-                    CONF.anaconda.default_ks_template
-                )
+                f'file://{os.path.abspath(CONF.anaconda.default_ks_template)}',
             )
 
     node.save()
@@ -808,8 +807,8 @@ def build_deploy_pxe_options(task, pxe_info, mode='deploy',
                              ipxe_enabled=False):
     pxe_opts = {}
     node = task.node
-    kernel_label = '%s_kernel' % mode
-    ramdisk_label = '%s_ramdisk' % mode
+    kernel_label = f'{mode}_kernel'
+    ramdisk_label = f'{mode}_ramdisk'
     initrd_filename = ramdisk_label
     for label, option in ((kernel_label, 'deployment_aki_path'),
                           (ramdisk_label, 'deployment_ari_path')):
@@ -820,8 +819,9 @@ def build_deploy_pxe_options(task, pxe_info, mode='deploy',
                 pxe_opts[option] = images.get_temp_url_for_glance_image(
                     task.context, image_href)
                 if label == ramdisk_label:
-                    path = urlparse.urlparse(pxe_opts[option]).path.strip('/')
-                    if path:
+                    if path := urlparse.urlparse(pxe_opts[option]).path.strip(
+                        '/'
+                    ):
                         initrd_filename = path.split('/')[-1]
             else:
                 pxe_opts[option] = '/'.join([CONF.deploy.http_url, node.uuid,
@@ -902,8 +902,7 @@ def build_extra_pxe_options(task, ramdisk_params=None):
             ('%s=%s' % tpl) if tpl[1] is not None else tpl[0]
             for tpl in ramdisk_params.items())
     if task and task.context.global_id:
-        pxe_append_params += (
-            ' ipa-global-request-id=%s' % task.context.global_id)
+        pxe_append_params += f' ipa-global-request-id={task.context.global_id}'
 
     return {'pxe_append_params': pxe_append_params,
             'tftp_server': CONF.pxe.tftp_server,
@@ -1012,21 +1011,17 @@ def build_kickstart_config_options(task):
     :returns: A dictionary of kickstart options to be used in the kickstart
               template.
     """
-    params = {}
     node = task.node
     manager_utils.add_secret_token(node, pregenerated=True)
     node.save()
-    params['liveimg_url'] = node.instance_info['image_url']
+    params = {'liveimg_url': node.instance_info['image_url']}
     if node.driver_internal_info.get('is_source_a_path', False):
         # Record a value so it matches as the template opts in.
         params['is_source_a_path'] = 'true'
     if CONF.anaconda.insecure_heartbeat:
         params['insecure_heartbeat'] = 'true'
     params['agent_token'] = node.driver_internal_info['agent_secret_token']
-    heartbeat_url = '%s/v1/heartbeat/%s' % (
-        deploy_utils.get_ironic_api_url().rstrip('/'),
-        node.uuid
-    )
+    heartbeat_url = f"{deploy_utils.get_ironic_api_url().rstrip('/')}/v1/heartbeat/{node.uuid}"
     params['heartbeat_url'] = heartbeat_url
     params['config_drive'] = ks_utils.prepare_config_drive(task)
     return {'ks_options': params}
@@ -1035,16 +1030,13 @@ def build_kickstart_config_options(task):
 def get_volume_pxe_options(task):
     """Identify volume information for iPXE template generation."""
     def __return_item_or_first_if_list(item):
-        if isinstance(item, list):
-            return item[0]
-        else:
-            return item
+        return item[0] if isinstance(item, list) else item
 
     def __get_property(properties, key):
         prop = __return_item_or_first_if_list(properties.get(key, ''))
         if prop != '':
             return prop
-        return __return_item_or_first_if_list(properties.get(key + 's', ''))
+        return __return_item_or_first_if_list(properties.get(f'{key}s', ''))
 
     def __format_portal(portal, iqn, lun):
         if ':' in portal:
@@ -1129,11 +1121,11 @@ def validate_kickstart_template(ks_template):
                 'valid_options': ','.join(ks_options.keys())})
         raise exception.InvalidKickstartTemplate(msg)
 
-    missing_required_options = []
-    for var, value in ks_options.items():
-        if rendered_tmpl.find(value) == -1:
-            missing_required_options.append(var)
-    if missing_required_options:
+    if missing_required_options := [
+        var
+        for var, value in ks_options.items()
+        if rendered_tmpl.find(value) == -1
+    ]:
         msg = (_("Following required kickstart option variables are missing "
                  "from the kickstart template: %(missing_opts)s.") %
                {'missing_opts': ','.join(missing_required_options)})

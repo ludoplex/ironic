@@ -59,10 +59,7 @@ class IronicBase(models.TimestampMixin,
     version = Column(String(15), nullable=True)
 
     def as_dict(self):
-        d = {}
-        for c in self.__table__.columns:
-            d[c.name] = self[c.name]
-        return d
+        return {c.name: self[c.name] for c in self.__table__.columns}
 
 
 Base = declarative_base(cls=IronicBase)

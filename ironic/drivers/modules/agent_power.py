@@ -100,14 +100,12 @@ class AgentPower(base.PowerInterface):
         :param task: A TaskManager instance containing the node to act on.
         :returns: A power state. One of :mod:`ironic.common.states`.
         """
-        # TODO(dtantsur): support ACTIVE nodes
         if cond_utils.agent_is_alive(task.node):
             return states.POWER_ON
-        else:
-            LOG.error('Node %s is not fast-track-able, cannot determine '
-                      'its power state via the "agent" power interface',
-                      task.node.uuid)
-            return None
+        LOG.error('Node %s is not fast-track-able, cannot determine '
+                  'its power state via the "agent" power interface',
+                  task.node.uuid)
+        return None
 
     def set_power_state(self, task, power_state, timeout=None):
         """Set the power state of the task's node.
@@ -121,11 +119,10 @@ class AgentPower(base.PowerInterface):
         """
         if power_state in (states.REBOOT, states.SOFT_REBOOT):
             return self.reboot(task)
-        else:
-            LOG.error('Power state %(state)s is not implemented for node '
-                      '%(node)s using the "agent" power interface',
-                      {'node': task.node.uuid, 'state': power_state})
-            raise exception.PowerStateFailure(pstate=power_state)
+        LOG.error('Power state %(state)s is not implemented for node '
+                  '%(node)s using the "agent" power interface',
+                  {'node': task.node.uuid, 'state': power_state})
+        raise exception.PowerStateFailure(pstate=power_state)
 
     def reboot(self, task, timeout=None):
         """Perform a reboot of the task's node.

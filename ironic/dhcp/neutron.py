@@ -65,8 +65,7 @@ class NeutronDHCPApi(base.BaseDHCP):
             neutron_client = neutron.get_client(token=token, context=context)
 
             fips = []
-            port = neutron_client.get_port(port_id)
-            if port:
+            if port := neutron_client.get_port(port_id):
                 # TODO(TheJulia): We need to retool this down the
                 # road so that we handle ports and allow preferences
                 # for multi-address ports with different IP versions
@@ -83,9 +82,11 @@ class NeutronDHCPApi(base.BaseDHCP):
                 ip_versions = {ipaddress.ip_address(fip['ip_address']).version
                                for fip in fips}
                 for ip_version in ip_versions:
-                    for option in dhcp_options:
-                        if option.get('ip_version', 4) == ip_version:
-                            update_opts.append(option)
+                    update_opts.extend(
+                        option
+                        for option in dhcp_options
+                        if option.get('ip_version', 4) == ip_version
+                    )
             else:
                 LOG.error('Requested to update port for port %s, '
                           'however port lacks an IP address.', port_id)
@@ -176,25 +177,18 @@ class NeutronDHCPApi(base.BaseDHCP):
             raise exception.NetworkError(
                 _('Could not retrieve neutron port: %s') % port_id)
 
-        fixed_ips = neutron_port.get('fixed_ips')
-
-        # NOTE(faizan) At present only the first fixed_ip assigned to this
-        # neutron port will be used, since nova allocates only one fixed_ip
-        # for the instance.
-        if fixed_ips:
+        if fixed_ips := neutron_port.get('fixed_ips'):
             ip_address = fixed_ips[0].get('ip_address', None)
 
         if ip_address:
             try:
-                if (ipaddress.ip_address(ip_address).version == 4
-                        or ipaddress.ip_address(ip_address).version == 6):
+                if ipaddress.ip_address(ip_address).version in [4, 6]:
                     return ip_address
-                else:
-                    LOG.error("Neutron returned invalid IP "
-                              "address %(ip_address)s on port %(port_id)s.",
-                              {'ip_address': ip_address, 'port_id': port_id})
+                LOG.error("Neutron returned invalid IP "
+                          "address %(ip_address)s on port %(port_id)s.",
+                          {'ip_address': ip_address, 'port_id': port_id})
 
-                    raise exception.InvalidIPv4Address(ip_address=ip_address)
+                raise exception.InvalidIPv4Address(ip_address=ip_address)
             except ValueError as exc:
                 LOG.error("An Invalid IP address was supplied and failed "
                           "basic validation: %s", exc)
@@ -218,17 +212,14 @@ class NeutronDHCPApi(base.BaseDHCP):
 
         vif = task.driver.network.get_current_vif(task, p_obj)
         if not vif:
-            obj_name = 'portgroup'
-            if isinstance(p_obj, objects.Port):
-                obj_name = 'port'
+            obj_name = 'port' if isinstance(p_obj, objects.Port) else 'portgroup'
             LOG.warning("No VIFs found for node %(node)s when attempting "
                         "to get IP address for %(obj_name)s: %(obj_id)s.",
                         {'node': task.node.uuid, 'obj_name': obj_name,
                          'obj_id': p_obj.uuid})
             raise exception.FailedToGetIPAddressOnPort(port_id=p_obj.uuid)
 
-        vif_ip_address = self._get_fixed_ip_address(vif, client)
-        return vif_ip_address
+        return self._get_fixed_ip_address(vif, client)
 
     def _get_ip_addresses(self, task, pobj_list, client):
         """Get IP addresses for all ports/portgroups.
@@ -251,10 +242,7 @@ class NeutronDHCPApi(base.BaseDHCP):
                 failures.append(obj.uuid)
 
         if failures:
-            obj_name = 'portgroups'
-            if isinstance(pobj_list[0], objects.Port):
-                obj_name = 'ports'
-
+            obj_name = 'ports' if isinstance(pobj_list[0], objects.Port) else 'portgroups'
             LOG.warning(
                 "Some errors were encountered on node %(node)s "
                 "while retrieving IP addresses on the following "

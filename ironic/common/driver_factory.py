@@ -103,8 +103,7 @@ def get_interface(hw_type, interface_type, interface_name):
         # any combinations of interface implementations.
         return impl_instance
 
-    supported_impls = getattr(hw_type,
-                              'supported_%s_interfaces' % interface_type)
+    supported_impls = getattr(hw_type, f'supported_{interface_type}_interfaces')
     if type(impl_instance) not in supported_impls:
         raise exception.IncompatibleInterface(
             interface_type=interface_type, interface_impl=impl_instance,
@@ -134,7 +133,7 @@ def default_interface(hw_type, interface_type,
     factory = _INTERFACE_LOADERS[interface_type]
 
     # The fallback default from the configuration
-    impl_name = getattr(CONF, 'default_%s_interface' % interface_type)
+    impl_name = getattr(CONF, f'default_{interface_type}_interface')
 
     if impl_name is not None:
         try:
@@ -149,8 +148,7 @@ def default_interface(hw_type, interface_type,
                 node_info=node_info)
 
     else:
-        supported = getattr(hw_type,
-                            'supported_%s_interfaces' % interface_type)
+        supported = getattr(hw_type, f'supported_{interface_type}_interfaces')
         # Mapping of classes to entry points
         enabled = {obj.__class__: name for (name, obj) in factory().items()}
 
@@ -166,9 +164,7 @@ def default_interface(hw_type, interface_type,
         # NOTE(rloo). No i18n on driver_type_str because translating substrings
         #             on their own may cause the final string to look odd.
         driver_name = driver_name or hw_type.__class__.__name__
-        node_info = ""
-        if node is not None:
-            node_info = _(' node %s with') % node
+        node_info = _(' node %s with') % node if node is not None else ""
         raise exception.NoValidDefaultForInterface(
             interface_type=interface_type, driver=driver_name,
             node_info=node_info)
@@ -204,7 +200,7 @@ def check_and_update_node_interfaces(node, hw_type=None):
 
     # Walk through all dynamic interfaces and check/update them
     for iface in factories:
-        field_name = '%s_interface' % iface
+        field_name = f'{iface}_interface'
         # NOTE(dtantsur): objects raise NotImplementedError on accessing fields
         # that are known, but missing from an object. Thus, we cannot just use
         # getattr(node, field_name, None) here.
@@ -295,14 +291,16 @@ def enabled_supported_interfaces(hardware_type):
     :returns: a dict mapping interface types to a list of enabled and supported
               interface names.
     """
-    mapping = dict()
+    mapping = {}
     for interface_type in driver_base.ALL_INTERFACES:
-        supported = set()
-        supported_ifaces = getattr(hardware_type,
-                                   'supported_%s_interfaces' % interface_type)
-        for name, iface in interfaces(interface_type).items():
-            if iface.__class__ in supported_ifaces:
-                supported.add(name)
+        supported_ifaces = getattr(
+            hardware_type, f'supported_{interface_type}_interfaces'
+        )
+        supported = {
+            name
+            for name, iface in interfaces(interface_type).items()
+            if iface.__class__ in supported_ifaces
+        }
         mapping[interface_type] = supported
     return mapping
 
@@ -452,7 +450,7 @@ class InterfaceFactory(BaseDriverFactory):
             try:
                 name = cls_names[supported]
             except KeyError:
-                raise KeyError("%s not in %s" % (supported, cls_names))
+                raise KeyError(f"{supported} not in {cls_names}")
             if name not in cls._enabled_driver_list:
                 cls._enabled_driver_list.append(name)
 
@@ -470,15 +468,17 @@ class HardwareTypesFactory(BaseDriverFactory):
 
 
 _INTERFACE_LOADERS = {
-    name: type('%sInterfaceFactory' % name.capitalize(),
-               (InterfaceFactory,),
-               {'_entrypoint_name': 'ironic.hardware.interfaces.%s' % name,
-                '_enabled_driver_list_config_option':
-                'enabled_%s_interfaces' % name,
-                '_supported_driver_list_field':
-                'supported_%s_interfaces' % name,
-                '_logging_template':
-                "Loaded the following %s interfaces: %%s" % name})
+    name: type(
+        f'{name.capitalize()}InterfaceFactory',
+        (InterfaceFactory,),
+        {
+            '_entrypoint_name': f'ironic.hardware.interfaces.{name}',
+            '_enabled_driver_list_config_option': f'enabled_{name}_interfaces',
+            '_supported_driver_list_field': f'supported_{name}_interfaces',
+            '_logging_template': "Loaded the following %s interfaces: %%s"
+            % name,
+        },
+    )
     for name in driver_base.ALL_INTERFACES
 }
 

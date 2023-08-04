@@ -38,21 +38,20 @@ def convert_with_links(rpc_bios, node_uuid, detail=None, fields=None):
     if detail:
         fields = _DEFAULT_FIELDS_WITH_REGISTRY
 
-    bios = api_utils.object_to_dict(
+    return api_utils.object_to_dict(
         rpc_bios,
         include_uuid=False,
         fields=fields,
         link_resource='nodes',
-        link_resource_args="%s/bios/%s" % (node_uuid, rpc_bios.name),
+        link_resource_args=f"{node_uuid}/bios/{rpc_bios.name}",
     )
-    return bios
 
 
 def collection_from_list(node_ident, bios_settings, detail=None, fields=None):
-    bios_list = []
-    for bios_setting in bios_settings:
-        bios_list.append(convert_with_links(bios_setting, node_ident,
-                         detail, fields))
+    bios_list = [
+        convert_with_links(bios_setting, node_ident, detail, fields)
+        for bios_setting in bios_settings
+    ]
     return {'bios': bios_list}
 
 

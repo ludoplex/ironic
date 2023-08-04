@@ -215,8 +215,8 @@ MINOR_83_PARENT_CHILD_NODES = 83
 MINOR_MAX_VERSION = MINOR_83_PARENT_CHILD_NODES
 
 # String representations of the minor and maximum versions
-_MIN_VERSION_STRING = '{}.{}'.format(BASE_VERSION, MINOR_1_INITIAL_VERSION)
-_MAX_VERSION_STRING = '{}.{}'.format(BASE_VERSION, MINOR_MAX_VERSION)
+_MIN_VERSION_STRING = f'{BASE_VERSION}.{MINOR_1_INITIAL_VERSION}'
+_MAX_VERSION_STRING = f'{BASE_VERSION}.{MINOR_MAX_VERSION}'
 
 
 def min_version_string():
@@ -230,9 +230,9 @@ def max_version_string():
     If the service is pinned, the maximum API version is the pinned
     version. Otherwise, it is the maximum supported API version.
     """
-    release_ver = release_mappings.RELEASE_MAPPING.get(
-        CONF.pin_release_version)
-    if release_ver:
+    if release_ver := release_mappings.RELEASE_MAPPING.get(
+        CONF.pin_release_version
+    ):
         return release_ver['api']
     else:
         return _MAX_VERSION_STRING

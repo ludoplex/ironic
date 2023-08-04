@@ -183,7 +183,7 @@ def _validate_job_queue(node, raid_controller=None):
     """
     kwargs = {}
     if raid_controller:
-        kwargs["name_prefix"] = "Config:RAID:%s" % raid_controller
+        kwargs["name_prefix"] = f"Config:RAID:{raid_controller}"
     drac_job.validate_job_queue(node, **kwargs)
 
 
@@ -466,7 +466,7 @@ def _change_physical_disk_mode(node, mode=None,
     change_disk_state = change_physical_disk_state(
         node, mode, controllers_to_physical_disk_ids)
 
-    controllers = list()
+    controllers = []
     conversion_results = change_disk_state['conversion_results']
     for controller_id, result in conversion_results.items():
         controller = {'raid_controller': controller_id,
@@ -715,7 +715,7 @@ def _find_configuration(logical_disks, physical_disks, pending_delete):
                                     pending_delete))
         if not result:
             # try again using the reserved physical disks in addition
-            for disk_type, disks in physical_disks_by_type.items():
+            for disk_type in physical_disks_by_type:
                 physical_disks_by_type[disk_type] += (
                     reserved_physical_disks_by_type[disk_type])
 
@@ -724,13 +724,13 @@ def _find_configuration(logical_disks, physical_disks, pending_delete):
                                         physical_disks_by_type,
                                         free_space_mb,
                                         pending_delete))
-            if not result:
-                error_msg = _('failed to find matching physical disks for all '
-                              'logical disks')
-                LOG.error('DRAC driver failed to create RAID '
-                          'configuration. Reason: %(error)s.',
-                          {'error': error_msg})
-                raise exception.DracOperationError(error=error_msg)
+        if not result:
+            error_msg = _('failed to find matching physical disks for all '
+                          'logical disks')
+            LOG.error('DRAC driver failed to create RAID '
+                      'configuration. Reason: %(error)s.',
+                      {'error': error_msg})
+            raise exception.DracOperationError(error=error_msg)
 
     processed_volumes += volumes_without_disks
 
@@ -853,7 +853,7 @@ def _assign_disks_to_volume(logical_disks, physical_disks_by_type,
                                                   disks_count):
                 continue
 
-            selected_disks = disks[0:disks_count]
+            selected_disks = disks[:disks_count]
 
             candidate_volume = logical_disk.copy()
             candidate_free_space_mb = free_space_mb.copy()
@@ -917,11 +917,8 @@ def _create_config_job(node, controller, reboot=False, realtime=False,
 
 def _validate_volume_size(node, logical_disks):
     new_physical_disks = list_physical_disks(node)
-    free_space_mb = {}
     new_processed_volumes = []
-    for disk in new_physical_disks:
-        free_space_mb[disk] = disk.free_size_mb
-
+    free_space_mb = {disk: disk.free_size_mb for disk in new_physical_disks}
     for logical_disk in logical_disks:
         selected_disks = [disk for disk in new_physical_disks
                           if disk.id in logical_disk['physical_disks']]
@@ -943,10 +940,7 @@ def _validate_volume_size(node, logical_disks):
                 logical_disk, new_physical_disks, free_space_mb)
             new_processed_volumes.append(logical_disk)
 
-    if new_processed_volumes:
-        return new_processed_volumes
-
-    return logical_disks
+    return new_processed_volumes if new_processed_volumes else logical_disks
 
 
 def _switch_to_raid_mode(node, controller_fqdd):
@@ -967,16 +961,15 @@ def _switch_to_raid_mode(node, controller_fqdd):
     # wait for pending jobs to complete
     drac_job.wait_for_job_completion(node)
 
-    raid_attr = "{}:{}".format(controller_fqdd,
-                               _REQUESTED_RAID_CONTROLLER_MODE)
+    raid_attr = f"{controller_fqdd}:{_REQUESTED_RAID_CONTROLLER_MODE}"
     settings = {raid_attr: _RAID_MODE}
     settings_results = set_raid_settings(
         node, controller_fqdd, settings)
-    controller = {
+    return {
         'raid_controller': controller_fqdd,
         'is_reboot_required': settings_results['is_reboot_required'],
-        'is_commit_required': settings_results['is_commit_required']}
-    return controller
+        'is_commit_required': settings_results['is_commit_required'],
+    }
 
 
 def _commit_to_controllers(node, controllers, substep="completed"):
@@ -1110,9 +1103,8 @@ def _create_virtual_disks(task, node):
         logical_disks_to_create = _validate_volume_size(
             node, logical_disks_to_create)
 
-    controllers = list()
+    controllers = []
     for logical_disk in logical_disks_to_create:
-        controller = dict()
         controller_cap = create_virtual_disk(
             node,
             raid_controller=logical_disk['controller'],
@@ -1122,11 +1114,11 @@ def _create_virtual_disks(task, node):
             disk_name=logical_disk.get('name'),
             span_length=logical_disk.get('span_length'),
             span_depth=logical_disk.get('span_depth'))
-        controller['raid_controller'] = logical_disk['controller']
-        controller['is_reboot_required'] = controller_cap[
-            'is_reboot_required']
-        controller['is_commit_required'] = controller_cap[
-            'is_commit_required']
+        controller = {
+            'raid_controller': logical_disk['controller'],
+            'is_reboot_required': controller_cap['is_reboot_required'],
+            'is_commit_required': controller_cap['is_commit_required'],
+        }
         if controller not in controllers:
             controllers.append(controller)
 
@@ -1135,19 +1127,18 @@ def _create_virtual_disks(task, node):
 
 def _controller_in_hba_mode(raid_settings, controller_fqdd):
     controller_mode = raid_settings.get(
-        '{}:{}'.format(controller_fqdd, _CURRENT_RAID_CONTROLLER_MODE))
+        f'{controller_fqdd}:{_CURRENT_RAID_CONTROLLER_MODE}'
+    )
 
     return _EHBA_MODE in controller_mode.current_value
 
 
 def _controller_supports_ehba_mode(settings, controller_fqdd):
-    raid_cntrl_attr = "{}:{}".format(controller_fqdd,
-                                     _CURRENT_RAID_CONTROLLER_MODE)
-    current_cntrl_mode = settings.get(raid_cntrl_attr)
-    if not current_cntrl_mode:
-        return False
-    else:
+    raid_cntrl_attr = f"{controller_fqdd}:{_CURRENT_RAID_CONTROLLER_MODE}"
+    if current_cntrl_mode := settings.get(raid_cntrl_attr):
         return _EHBA_MODE in current_cntrl_mode.possible_values
+    else:
+        return False
 
 
 def _get_disk_free_size_mb(disk, pending_delete):
@@ -1311,12 +1302,11 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
                 if drive.identity in logical_disk.get('physical_disks'):
                     controller_to_disks[controller].append(drive)
 
-        converted = DracRedfishRAID._change_physical_disk_state(
+        if converted := DracRedfishRAID._change_physical_disk_state(
             system,
             sushy_oem_idrac.PHYSICAL_DISK_STATE_MODE_RAID,
-            controller_to_disks)
-
-        if converted:
+            controller_to_disks,
+        ):
             # Recalculate sizes as disks size changes after conversion
             return DracRedfishRAID._get_revalidated_logical_disks(
                 task.node, system, logical_disks_to_create)
@@ -1337,17 +1327,16 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
         """
 
         system = redfish_utils.get_system(task.node)
-        async_proc = DracRedfishRAID._clear_foreign_config(system, task)
-        if async_proc:
+        if async_proc := DracRedfishRAID._clear_foreign_config(system, task):
             # Async processing with system rebooting in progress
             task.node.set_driver_internal_info(
                 'raid_config_substep', 'clear_foreign_config')
             task.node.save()
             return deploy_utils.get_async_step_return_state(task.node)
         else:
-            conv_state = DracRedfishRAID._convert_controller_to_raid_mode(
-                task)
-            if conv_state:
+            if conv_state := DracRedfishRAID._convert_controller_to_raid_mode(
+                task
+            ):
                 return conv_state
 
         return return_state
@@ -1419,11 +1408,8 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
             same as input `logical_disks_to_create`
         """
         new_physical_disks, disk_to_controller =\
-            redfish_raid.get_physical_disks(node)
-        free_space_bytes = {}
-        for disk in new_physical_disks:
-            free_space_bytes[disk] = disk.capacity_bytes
-
+                redfish_raid.get_physical_disks(node)
+        free_space_bytes = {disk: disk.capacity_bytes for disk in new_physical_disks}
         new_processed_volumes = []
         for logical_disk in logical_disks_to_create:
             selected_disks = [disk for disk in new_physical_disks
@@ -1506,12 +1492,12 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
         """
 
         system = redfish_utils.get_system(task.node)
-        task_mons = []
         warning_msg_templ = (
             'Possibly because `%(pkg)s` is too old. Without newer `%(pkg)s` '
             'PERC 9 and PERC 10 controllers that are not in RAID mode will '
             'not be used or have limited RAID support. To avoid that update '
             '`%(pkg)s`')
+        task_mons = []
         for storage in system.storage.get_members():
             storage_controllers = None
             try:
@@ -1520,29 +1506,32 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
                 # Check if there storage_controllers to separate old iDRAC and
                 # storage without controller
                 if storage.storage_controllers:
-                    LOG.warning('%(storage)s does not have controllers for '
-                                'node %(node)s' + warning_msg_templ,
-                                {'storage': storage.identity,
-                                 'node': task.node.uuid,
-                                 'pkg': 'iDRAC'})
+                    LOG.warning(
+                        f'%(storage)s does not have controllers for node %(node)s{warning_msg_templ}',
+                        {
+                            'storage': storage.identity,
+                            'node': task.node.uuid,
+                            'pkg': 'iDRAC',
+                        },
+                    )
                 continue
             except AttributeError:
-                LOG.warning('%(storage)s does not have controllers attribute. '
-                            + warning_msg_templ, {'storage': storage.identity,
-                                                  'pkg': 'sushy'})
+                LOG.warning(
+                    f'%(storage)s does not have controllers attribute. {warning_msg_templ}',
+                    {'storage': storage.identity, 'pkg': 'sushy'},
+                )
                 return None
             if storage_controllers:
                 controller = storage.controllers.get_members()[0]
                 try:
                     oem_controller = controller.get_oem_extension('Dell')
                 except sushy.exceptions.ExtensionError as ee:
-                    LOG.warning('Failed to find extension to convert '
-                                'controller to RAID mode. '
-                                + warning_msg_templ + '. Error: %(err)s',
-                                {'err': ee, 'pkg': 'sushy-oem-idrac'})
+                    LOG.warning(
+                        f'Failed to find extension to convert controller to RAID mode. {warning_msg_templ}. Error: %(err)s',
+                        {'err': ee, 'pkg': 'sushy-oem-idrac'},
+                    )
                     return None
-                task_mon = oem_controller.convert_to_raid()
-                if task_mon:
+                if task_mon := oem_controller.convert_to_raid():
                     task_mons.append(task_mon)
 
         if task_mons:
@@ -1588,9 +1577,11 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
             if not task_mon.is_processing:
                 raid_task = task_mon.get_task()
                 completed_task_mon_uris.append(task_mon_uri)
-                if not (raid_task.task_state == sushy.TASK_STATE_COMPLETED
-                        and raid_task.task_status in
-                        [sushy.HEALTH_OK, sushy.HEALTH_WARNING]):
+                if (
+                    raid_task.task_state != sushy.TASK_STATE_COMPLETED
+                    or raid_task.task_status
+                    not in [sushy.HEALTH_OK, sushy.HEALTH_WARNING]
+                ):
                     messages = [m.message for m in raid_task.messages
                                 if m.message is not None]
                     failed_msgs.append(
@@ -1608,26 +1599,22 @@ class DracRedfishRAID(redfish_raid.RedfishRAID):
                                                 'error': error_msg})
             node.del_driver_internal_info('raid_task_monitor_uris')
             self._set_failed(task, log_msg, error_msg)
+        elif running_task_mon_uris := [
+            x for x in task_mon_uris if x not in completed_task_mon_uris
+        ]:
+            node.set_driver_internal_info('raid_task_monitor_uris',
+                                          running_task_mon_uris)
         else:
-            running_task_mon_uris = [x for x in task_mon_uris
-                                     if x not in completed_task_mon_uris]
-            if running_task_mon_uris:
-                node.set_driver_internal_info('raid_task_monitor_uris',
-                                              running_task_mon_uris)
-                # will check remaining jobs in the next period
-            else:
-                # all tasks completed and none of them failed
-                node.del_driver_internal_info('raid_task_monitor_uris')
-                substep = node.driver_internal_info.get(
-                    'raid_config_substep')
-                if substep == 'clear_foreign_config':
-                    node.del_driver_internal_info('raid_config_substep')
-                    node.save()
-                    res = DracRedfishRAID._convert_controller_to_raid_mode(
-                        task)
-                    if res:  # New tasks submitted
-                        return
-                self._set_success(task)
+            # all tasks completed and none of them failed
+            node.del_driver_internal_info('raid_task_monitor_uris')
+            substep = node.driver_internal_info.get(
+                'raid_config_substep')
+            if substep == 'clear_foreign_config':
+                node.del_driver_internal_info('raid_config_substep')
+                node.save()
+                if res := DracRedfishRAID._convert_controller_to_raid_mode(task):
+                    return
+            self._set_success(task)
         node.save()
 
     def _set_failed(self, task, log_msg, error_msg):
@@ -1767,17 +1754,16 @@ class DracWSManRAID(base.RAIDInterface):
                 controllers_to_physical_disk_ids,
                 substep="create_virtual_disks")
 
-        volume_validation = True if commit_results else False
+        volume_validation = bool(commit_results)
         node.set_driver_internal_info('volume_validation',
                                       volume_validation)
         node.save()
 
         if commit_results:
             return commit_results
-        else:
-            LOG.debug("Controller does not support drives conversion "
-                      "so creating virtual disks")
-            return _create_virtual_disks(task, node)
+        LOG.debug("Controller does not support drives conversion "
+                  "so creating virtual disks")
+        return _create_virtual_disks(task, node)
 
     @METRICS.timer('DracRAID.delete_configuration')
     @base.clean_step(priority=0, requires_ramdisk=False)
@@ -1849,8 +1835,7 @@ class DracWSManRAID(base.RAIDInterface):
 
             if config_job is None or config_job.status == 'Completed':
                 finished_job_ids.append(config_job_id)
-            elif (config_job.status == 'Failed'
-                    or config_job.status == 'Completed with Errors'):
+            elif config_job.status in ['Failed', 'Completed with Errors']:
                 finished_job_ids.append(config_job_id)
                 self._set_raid_config_job_failure(node)
 
@@ -1860,30 +1845,30 @@ class DracWSManRAID(base.RAIDInterface):
         task.upgrade_lock()
         self._delete_cached_config_job_id(node, finished_job_ids)
 
-        if not node.driver_internal_info.get('raid_config_job_failure',
+        if node.driver_internal_info.get('raid_config_job_failure',
                                              False):
-            if 'raid_config_substep' in node.driver_internal_info:
-                substep = node.driver_internal_info['raid_config_substep']
-
-                if substep == 'delete_foreign_config':
-                    foreign_drives = self._execute_foreign_drives(task, node)
-                    if foreign_drives is None:
-                        return self._convert_drives(task, node)
-                elif substep == 'physical_disk_conversion':
-                    self._convert_drives(task, node)
-                elif substep == "create_virtual_disks":
-                    return _create_virtual_disks(task, node)
-                elif substep == 'completed':
-                    self._complete_raid_substep(task, node)
-            else:
-                self._complete_raid_substep(task, node)
-        else:
             self._clear_raid_substep(node)
             self._clear_raid_config_job_failure(node)
             self._set_failed(task, config_job)
 
+        elif 'raid_config_substep' in node.driver_internal_info:
+            substep = node.driver_internal_info['raid_config_substep']
+
+            if substep == 'completed':
+                self._complete_raid_substep(task, node)
+            elif substep == 'delete_foreign_config':
+                foreign_drives = self._execute_foreign_drives(task, node)
+                if foreign_drives is None:
+                    return self._convert_drives(task, node)
+            elif substep == 'physical_disk_conversion':
+                self._convert_drives(task, node)
+            elif substep == "create_virtual_disks":
+                return _create_virtual_disks(task, node)
+        else:
+            self._complete_raid_substep(task, node)
+
     def _execute_foreign_drives(self, task, node):
-        controllers = list()
+        controllers = []
         jobs_required = False
         for controller_id in node.driver_internal_info[
                 'raid_config_parameters']:
@@ -1897,16 +1882,15 @@ class DracWSManRAID(base.RAIDInterface):
             jobs_required = jobs_required or controller_cap[
                 'is_commit_required']
 
-        if not jobs_required:
-            LOG.info(
-                "No foreign drives detected, so "
-                "resume %s", "cleaning" if node.clean_step else "deployment")
-            return None
-        else:
+        if jobs_required:
             return _commit_to_controllers(
                 node,
                 controllers,
                 substep='physical_disk_conversion')
+        LOG.info(
+            "No foreign drives detected, so "
+            "resume %s", "cleaning" if node.clean_step else "deployment")
+        return None
 
     def _complete_raid_substep(self, task, node):
         self._clear_raid_substep(node)
@@ -1975,12 +1959,12 @@ class DracWSManRAID(base.RAIDInterface):
             be committed.
         """
         node = task.node
-        controllers = list()
+        controllers = []
         drac_raid_controllers = list_raid_controllers(node)
         drac_raid_settings = list_raid_settings(node)
         for cntrl in drac_raid_controllers:
             if _is_raid_controller(node, cntrl.id, drac_raid_controllers):
-                controller = dict()
+                controller = {}
                 if _controller_supports_ehba_mode(
                         drac_raid_settings,
                         cntrl.id) and _controller_in_hba_mode(

@@ -34,17 +34,14 @@ def get_node_vif_ids(task):
                {'ports': {'port.uuid': vif.id},
                 'portgroups': {'portgroup.uuid': vif.id}}
     """
-    vifs = {}
     portgroup_vifs = {}
     port_vifs = {}
     for portgroup in task.portgroups:
-        vif = task.driver.network.get_current_vif(task, portgroup)
-        if vif:
+        if vif := task.driver.network.get_current_vif(task, portgroup):
             portgroup_vifs[portgroup.uuid] = vif
-    vifs['portgroups'] = portgroup_vifs
+    vifs = {'portgroups': portgroup_vifs}
     for port in task.ports:
-        vif = task.driver.network.get_current_vif(task, port)
-        if vif:
+        if vif := task.driver.network.get_current_vif(task, port):
             port_vifs[port.uuid] = vif
     vifs['ports'] = port_vifs
     return vifs
@@ -81,9 +78,11 @@ def get_physnets_for_node(task):
     :param task: a TaskManager instance
     :returns: A set of physical networks.
     """
-    return set(port.physical_network
-               for port in task.ports
-               if port.physical_network is not None)
+    return {
+        port.physical_network
+        for port in task.ports
+        if port.physical_network is not None
+    }
 
 
 def get_physnets_by_portgroup_id(task, portgroup_id, exclude_port=None):
@@ -103,9 +102,11 @@ def get_physnets_by_portgroup_id(task, portgroup_id, exclude_port=None):
         exclude_port_id = exclude_port.id
     else:
         exclude_port_id = None
-    pg_physnets = set(port.physical_network
-                      for port in pg_ports
-                      if port.id != exclude_port_id)
+    pg_physnets = {
+        port.physical_network
+        for port in pg_ports
+        if port.id != exclude_port_id
+    }
     # Sanity check: all ports should have the same physical network.
     if len(pg_physnets) > 1:
         portgroup = get_portgroup_by_id(task, portgroup_id)

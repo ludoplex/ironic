@@ -95,13 +95,13 @@ def _parse_ansible_driver_info(node, action='deploy'):
                                 CONF.ansible.default_username)
     key = node.driver_info.get('ansible_key_file',
                                CONF.ansible.default_key_file)
-    playbook = node.driver_info.get('ansible_%s_playbook' % action,
-                                    getattr(CONF.ansible,
-                                            'default_%s_playbook' % action,
-                                            None))
-    if not playbook:
+    if playbook := node.driver_info.get(
+        f'ansible_{action}_playbook',
+        getattr(CONF.ansible, f'default_{action}_playbook', None),
+    ):
+        return os.path.basename(playbook), user, key
+    else:
         raise PlaybookNotFound(action=action)
-    return os.path.basename(playbook), user, key
 
 
 def _get_python_interpreter(node):
@@ -110,7 +110,7 @@ def _get_python_interpreter(node):
 
 
 def _get_configdrive_path(basename):
-    return os.path.join(CONF.tempdir, basename + '.cndrive')
+    return os.path.join(CONF.tempdir, f'{basename}.cndrive')
 
 
 def _get_node_ip(task):
@@ -119,12 +119,13 @@ def _get_node_ip(task):
 
 
 def _prepare_extra_vars(host_list, variables=None):
-    nodes_var = []
-    for node_uuid, ip, user, extra in host_list:
-        nodes_var.append(dict(name=node_uuid, ip=ip, user=user, extra=extra))
+    nodes_var = [
+        dict(name=node_uuid, ip=ip, user=user, extra=extra)
+        for node_uuid, ip, user, extra in host_list
+    ]
     extra_vars = dict(nodes=nodes_var)
     if variables:
-        extra_vars.update(variables)
+        extra_vars |= variables
     return extra_vars
 
 
@@ -134,8 +135,7 @@ def _run_playbook(node, name, extra_vars, key, tags=None, notags=None):
     playbook = os.path.join(root, name)
     inventory = os.path.join(root, 'inventory')
     ironic_vars = {'ironic': extra_vars}
-    python_interpreter = _get_python_interpreter(node)
-    if python_interpreter:
+    if python_interpreter := _get_python_interpreter(node):
         ironic_vars['ansible_python_interpreter'] = python_interpreter
     args = [CONF.ansible.ansible_playbook_script, playbook,
             '-i', inventory,
@@ -143,17 +143,17 @@ def _run_playbook(node, name, extra_vars, key, tags=None, notags=None):
             ]
 
     if CONF.ansible.config_file_path:
-        env = ['env', 'ANSIBLE_CONFIG=%s' % CONF.ansible.config_file_path]
+        env = ['env', f'ANSIBLE_CONFIG={CONF.ansible.config_file_path}']
         args = env + args
 
     if tags:
-        args.append('--tags=%s' % ','.join(tags))
+        args.append(f"--tags={','.join(tags)}")
 
     if notags:
-        args.append('--skip-tags=%s' % ','.join(notags))
+        args.append(f"--skip-tags={','.join(notags)}")
 
     if key:
-        args.append('--private-key=%s' % key)
+        args.append(f'--private-key={key}')
 
     verbosity = CONF.ansible.verbosity
     if verbosity is None and CONF.debug:
@@ -268,24 +268,22 @@ def _add_ssl_image_options(image):
 def _prepare_variables(task):
     node = task.node
     i_info = node.instance_info
-    image = {}
-    for i_key, i_value in i_info.items():
-        if i_key.startswith('image_'):
-            image[i_key[6:]] = i_value
-
-    checksum = image.get('checksum')
-    if checksum:
+    image = {
+        i_key[6:]: i_value
+        for i_key, i_value in i_info.items()
+        if i_key.startswith('image_')
+    }
+    if checksum := image.get('checksum'):
         # NOTE(pas-ha) checksum can be in <algo>:<checksum> format
         # as supported by various Ansible modules, mostly good for
         # standalone Ironic case when instance_info is populated manually.
         # With no <algo> we take that instance_info is populated from Glance,
         # where API reports checksum as MD5 always.
         if ':' not in checksum:
-            image['checksum'] = 'md5:%s' % checksum
+            image['checksum'] = f'md5:{checksum}'
     _add_ssl_image_options(image)
     variables = {'image': image}
-    configdrive = manager_utils.get_configdrive_image(task.node)
-    if configdrive:
+    if configdrive := manager_utils.get_configdrive_image(task.node):
         if urlparse.urlparse(configdrive).scheme in ('http', 'https'):
             cfgdrv_type = 'url'
             cfgdrv_location = configdrive
@@ -297,8 +295,7 @@ def _prepare_variables(task):
         variables['configdrive'] = {'type': cfgdrv_type,
                                     'location': cfgdrv_location}
 
-    root_device_hints = _parse_root_device_hints(node)
-    if root_device_hints:
+    if root_device_hints := _parse_root_device_hints(node):
         variables['root_device_hints'] = root_device_hints
 
     return variables
@@ -314,10 +311,11 @@ def _validate_clean_steps(steps, node_uuid):
         if 'interface' not in step:
             missing.append({'name': name, 'field': 'interface'})
         args = step.get('args', {})
-        for arg_name, arg in args.items():
-            if arg.get('required', False) and 'value' not in arg:
-                missing.append({'name': name,
-                                'field': '%s.value' % arg_name})
+        missing.extend(
+            {'name': name, 'field': f'{arg_name}.value'}
+            for arg_name, arg in args.items()
+            if arg.get('required', False) and 'value' not in arg
+        )
     if missing:
         err_string = ', '.join(
             'name %(name)s, field %(field)s' % i for i in missing)
@@ -325,7 +323,7 @@ def _validate_clean_steps(steps, node_uuid):
         LOG.error(msg)
         raise exception.NodeCleaningFailure(node=node_uuid,
                                             reason=msg)
-    if len(set(s['name'] for s in steps)) != len(steps):
+    if len({s['name'] for s in steps}) != len(steps):
         msg = _("Cleaning steps do not have unique names.")
         LOG.error(msg)
         raise exception.NodeCleaningFailure(node=node_uuid,
@@ -359,10 +357,8 @@ def _get_clean_steps(node, interface=None, override_priorities=None):
         new_priority = override.get(name)
         priority = (new_priority if new_priority is not None else
                     params.get('priority', 0))
-        args = {}
         argsinfo = params.get('args', {})
-        for arg, arg_info in argsinfo.items():
-            args[arg] = arg_info.pop('value', None)
+        args = {arg: arg_info.pop('value', None) for arg, arg_info in argsinfo.items()}
         step = {
             'interface': clean_if,
             'step': name,
@@ -397,9 +393,8 @@ class AnsibleDeploy(agent_base.HeartbeatMixin,
 
         node = task.node
 
-        params = {}
         image_source = node.instance_info.get('image_source')
-        params['instance_info.image_source'] = image_source
+        params = {'instance_info.image_source': image_source}
         error_msg = _('Node %s failed to validate deploy image info. Some '
                       'parameters were missing') % node.uuid
         deploy_utils.check_for_missing_params(params, error_msg)

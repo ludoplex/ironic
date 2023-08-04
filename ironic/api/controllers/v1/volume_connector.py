@@ -126,9 +126,7 @@ class VolumeConnectorsController(rest.RestController):
                 _("The sort_key value %(key)s is an invalid field for "
                   "sorting") % {'key': sort_key})
 
-        node_ident = self.parent_node_ident or node_ident
-
-        if node_ident:
+        if node_ident := self.parent_node_ident or node_ident:
             # FIXME(comstud): Since all we need is the node ID, we can
             #                 make this more efficient by only querying
             #                 for that column. This will get cleaned up

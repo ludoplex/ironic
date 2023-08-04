@@ -178,8 +178,7 @@ class GlanceImageService(object):
         if not service_utils.is_image_available(self.context, image):
             raise exception.ImageNotFound(image_id=image_id)
 
-        base_image_meta = service_utils.translate_from_glance(image)
-        return base_image_meta
+        return service_utils.translate_from_glance(image)
 
     @check_image_service
     def download(self, image_href, data=None):
@@ -208,9 +207,8 @@ class GlanceImageService(object):
 
         if data is None:
             return image_chunks
-        else:
-            for chunk in image_chunks:
-                data.write(chunk)
+        for chunk in image_chunks:
+            data.write(chunk)
 
     def _generate_temp_url(self, path, seconds, key, method, endpoint,
                            image_id):
@@ -306,18 +304,17 @@ class GlanceImageService(object):
 
         swift_account_prefix = CONF.glance.swift_account_prefix
         if swift_account_prefix and not swift_account_prefix.endswith('_'):
-            swift_account_prefix = '%s_' % swift_account_prefix
+            swift_account_prefix = f'{swift_account_prefix}_'
 
         # Strip /v1/AUTH_%(tenant_id)s, if present
-        endpoint_url = re.sub('/v1/%s[^/]+/?$' % swift_account_prefix, '',
-                              endpoint_url)
+        endpoint_url = re.sub(f'/v1/{swift_account_prefix}[^/]+/?$', '', endpoint_url)
 
         key = CONF.glance.swift_temp_url_key
         account = CONF.glance.swift_account
         if not account:
             swift_session = swift.get_swift_session()
             auth_ref = swift_session.auth.get_auth_ref(swift_session)
-            account = '%s%s' % (swift_account_prefix, auth_ref.project_id)
+            account = f'{swift_account_prefix}{auth_ref.project_id}'
 
         if not key:
             swift_api = swift.SwiftAPI()
@@ -389,9 +386,7 @@ class GlanceImageService(object):
             num_dashes = image_id[:seed_num_chars].count('-')
             num_chars = seed_num_chars + num_dashes
             name_suffix = image_id[:num_chars]
-            new_container_name = (CONF.glance.swift_container
-                                  + '_' + name_suffix)
-            return new_container_name
+            return f'{CONF.glance.swift_container}_{name_suffix}'
         else:
             return CONF.glance.swift_container
 

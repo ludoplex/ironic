@@ -106,15 +106,15 @@ class DBCommand(object):
         return msg
 
     def _check_versions(self, ignore_missing_tables=False):
-        msg = self.check_obj_versions(
-            ignore_missing_tables=ignore_missing_tables)
-        if not msg:
-            return
-        else:
+        if msg := self.check_obj_versions(
+            ignore_missing_tables=ignore_missing_tables
+        ):
             sys.stderr.write(msg)
             # NOTE(rloo): We return 1 in online_data_migrations() to indicate
             # that there are more objects to migrate, so don't use 1 here.
             sys.exit(2)
+        else:
+            return
 
     def upgrade(self):
         self._check_versions(ignore_missing_tables=True)
@@ -242,10 +242,9 @@ class DBCommand(object):
             print(_('"max-count" must be a positive value.'), file=sys.stderr)
             sys.exit(127)
 
-        finished_migrating = self._run_migration_functions(admin_context,
-                                                           max_count,
-                                                           parsed_options)
-        if finished_migrating:
+        if finished_migrating := self._run_migration_functions(
+            admin_context, max_count, parsed_options
+        ):
             print(_('Data migrations have completed.'))
             sys.exit(0)
         else:
@@ -330,11 +329,14 @@ def main():
 
     # this is hack to work with previous usage of ironic-dbsync
     # pls change it to ironic-dbsync upgrade
-    valid_commands = set([
-        'upgrade', 'revision',
-        'version', 'stamp', 'create_schema',
+    valid_commands = {
+        'upgrade',
+        'revision',
+        'version',
+        'stamp',
+        'create_schema',
         'online_data_migrations',
-    ])
+    }
     if not set(sys.argv) & valid_commands:
         sys.argv.append('upgrade')
 

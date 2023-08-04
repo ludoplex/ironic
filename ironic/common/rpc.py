@@ -87,19 +87,14 @@ class RequestContextSerializer(messaging.Serializer):
         self._base = base
 
     def serialize_entity(self, context, entity):
-        if not self._base:
-            return entity
-        return self._base.serialize_entity(context, entity)
+        return self._base.serialize_entity(context, entity) if self._base else entity
 
     def deserialize_entity(self, context, entity):
-        if not self._base:
-            return entity
-        return self._base.deserialize_entity(context, entity)
+        return self._base.deserialize_entity(context, entity) if self._base else entity
 
     def serialize_context(self, context):
         _context = context.to_dict()
-        prof = profiler.get()
-        if prof:
+        if prof := profiler.get():
             trace_info = {
                 "hmac_key": prof.hmac_key,
                 "base_id": prof.get_base_id(),
@@ -109,8 +104,7 @@ class RequestContextSerializer(messaging.Serializer):
         return _context
 
     def deserialize_context(self, context):
-        trace_info = context.pop("trace_info", None)
-        if trace_info:
+        if trace_info := context.pop("trace_info", None):
             profiler.init(**trace_info)
         return ironic_context.RequestContext.from_dict(context)
 
@@ -142,7 +136,7 @@ def get_server(target, endpoints, serializer=None):
 def get_sensors_notifier(service=None, host=None, publisher_id=None):
     assert SENSORS_NOTIFIER is not None
     if not publisher_id:
-        publisher_id = "%s.%s" % (service, host or CONF.host)
+        publisher_id = f"{service}.{host or CONF.host}"
     return SENSORS_NOTIFIER.prepare(publisher_id=publisher_id)
 
 

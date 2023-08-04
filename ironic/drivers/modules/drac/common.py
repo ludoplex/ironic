@@ -15,6 +15,7 @@
 Common functionalities shared between different DRAC modules.
 """
 
+
 from oslo_log import log as logging
 from oslo_utils import importutils
 
@@ -40,8 +41,7 @@ OPTIONAL_PROPERTIES = {
                        ' default is "https". Optional.'),
 }
 
-COMMON_PROPERTIES = REQUIRED_PROPERTIES.copy()
-COMMON_PROPERTIES.update(OPTIONAL_PROPERTIES)
+COMMON_PROPERTIES = REQUIRED_PROPERTIES | OPTIONAL_PROPERTIES
 
 
 def parse_driver_info(node):
@@ -107,11 +107,11 @@ def get_drac_client(node):
              node or on invalid input.
     """
     driver_info = parse_driver_info(node)
-    client = drac_client.DRACClient(driver_info['drac_address'],
-                                    driver_info['drac_username'],
-                                    driver_info['drac_password'],
-                                    driver_info['drac_port'],
-                                    driver_info['drac_path'],
-                                    driver_info['drac_protocol'])
-
-    return client
+    return drac_client.DRACClient(
+        driver_info['drac_address'],
+        driver_info['drac_username'],
+        driver_info['drac_password'],
+        driver_info['drac_port'],
+        driver_info['drac_path'],
+        driver_info['drac_protocol'],
+    )

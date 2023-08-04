@@ -83,7 +83,7 @@ V31_FIELDS = [
 ]
 
 STANDARD_TRAITS = os_traits.get_traits()
-CUSTOM_TRAIT_PATTERN = "^%s[A-Z0-9_]+$" % os_traits.CUSTOM_NAMESPACE
+CUSTOM_TRAIT_PATTERN = f"^{os_traits.CUSTOM_NAMESPACE}[A-Z0-9_]+$"
 CUSTOM_TRAIT_REGEX = re.compile(CUSTOM_TRAIT_PATTERN)
 
 TRAITS_SCHEMA = {
@@ -227,11 +227,7 @@ def object_to_dict(obj, include_created_at=True, include_updated_at=True,
             if value:
                 value = value.isoformat()
 
-        if value is not None:
-            to_dict[field] = value
-        else:
-            to_dict[field] = empty_value
-
+        to_dict[field] = value if value is not None else empty_value
     if link_resource:
         if not link_resource_args:
             link_resource_args = obj.uuid
@@ -482,8 +478,9 @@ def is_path_removed(patch, path):
     """
     path = path.rstrip('/')
     for p in patch:
-        if ((p['path'] == path or p['path'].startswith(path + '/'))
-                and p['op'] == 'remove'):
+        if (p['path'] == path or p['path'].startswith(f'{path}/')) and p[
+            'op'
+        ] == 'remove':
             return True
 
 
@@ -496,7 +493,7 @@ def is_path_updated(patch, path):
     """
     path = path.rstrip('/')
     for p in patch:
-        return p['path'] == path or p['path'].startswith(path + '/')
+        return p['path'] == path or p['path'].startswith(f'{path}/')
 
 
 def allow_node_logical_names():
@@ -515,7 +512,7 @@ def _get_with_suffix(get_func, ident, exc_class):
         # NOTE(dtantsur): strip .json prefix to maintain compatibility
         # with the guess_content_type_from_ext feature. Try to return it
         # back if the resulting resource was not found.
-        return get_func(ident + '.json')
+        return get_func(f'{ident}.json')
 
 
 def get_rpc_node(node_ident):
@@ -757,8 +754,7 @@ def check_for_invalid_fields(fields, object_fields):
     :raises: InvalidParameterValue if invalid fields were requested.
 
     """
-    invalid_fields = set(fields) - set(object_fields)
-    if invalid_fields:
+    if invalid_fields := set(fields) - set(object_fields):
         raise exception.InvalidParameterValue(
             _('Field(s) "%s" are not valid') % ', '.join(invalid_fields))
 
@@ -1403,20 +1399,20 @@ def get_request_return_fields(fields, detail, default_fields,
 
     if detail is not None and not check_detail_version():
         raise exception.InvalidParameterValue(
-            "Invalid query parameter ?detail=%s received." % detail)
+            f"Invalid query parameter ?detail={detail} received."
+        )
 
     if (fields is not None and callable(check_fields_version)
             and not check_fields_version()):
         raise exception.InvalidParameterValue(
-            "Invalid query parameter ?fields=%s received." % fields)
+            f"Invalid query parameter ?fields={fields} received."
+        )
 
     if fields is not None and detail:
         raise exception.InvalidParameterValue(
             "Can not specify ?detail=True and fields in the same request.")
 
-    if fields is None and not detail:
-        return default_fields
-    return fields
+    return default_fields if fields is None and not detail else fields
 
 
 def allow_expose_conductors():
@@ -1519,9 +1515,9 @@ def check_owner_policy(object_type, policy_name, owner, lessee=None,
     """
     cdict = api.request.context.to_policy_values()
     target_dict = dict(cdict)
-    target_dict[object_type + '.owner'] = owner
+    target_dict[f'{object_type}.owner'] = owner
     if lessee:
-        target_dict[object_type + '.lessee'] = lessee
+        target_dict[f'{object_type}.lessee'] = lessee
     try:
         policy.authorize(policy_name, target_dict, api.request.context)
     except exception.HTTPForbidden:
@@ -1545,7 +1541,6 @@ def check_node_policy_and_retrieve(policy_name, node_ident,
     :raises: NodeNotFound if the node is not found.
     :return: RPC node identified by node_ident
     """
-    conceal_node = False
     try:
         if with_suffix:
             rpc_node = get_rpc_node_with_suffix(node_ident)
@@ -1556,8 +1551,7 @@ def check_node_policy_and_retrieve(policy_name, node_ident,
     # Project scoped users will get a 404 where as system
     # scoped should get a 403
     cdict = api.request.context.to_policy_values()
-    if cdict.get('project_id', False):
-        conceal_node = node_ident
+    conceal_node = node_ident if cdict.get('project_id', False) else False
     try:
         # Always check the ability to see the node BEFORE anything else.
         check_owner_policy('node', 'baremetal:node:get', rpc_node['owner'],
@@ -1632,16 +1626,16 @@ def check_list_policy(object_type, owner=None):
     """
     cdict = api.request.context.to_policy_values()
     try:
-        policy.authorize('baremetal:%s:list_all' % object_type,
-                         cdict, api.request.context)
+        policy.authorize(
+            f'baremetal:{object_type}:list_all', cdict, api.request.context
+        )
     except (exception.HTTPForbidden, oslo_policy.InvalidScope):
         # In the event the scoped policy fails, falling back to the
         # policy governing a filtered view.
         project_owner = cdict.get('project_id')
         if (not project_owner or (owner and owner != project_owner)):
             raise
-        policy.authorize('baremetal:%s:list' % object_type,
-                         cdict, api.request.context)
+        policy.authorize(f'baremetal:{object_type}:list', cdict, api.request.context)
         return project_owner
     return owner
 
@@ -1679,7 +1673,6 @@ def check_port_policy_and_retrieve(policy_name, port_ident, portgroup=False):
     except exception.NodeNotFound:
         # There is no spoon, err, node.
         rpc_node = None
-        pass
     target_dict = dict(cdict)
     target_dict['node.owner'] = owner
     target_dict['node.lessee'] = lessee

@@ -110,13 +110,16 @@ def convert_with_links(name, hosts, detail=False, interface_info=None,
     }
     if api_utils.allow_links_node_states_and_driver_properties():
         driver['properties'] = [
-            link.make_link('self',
-                           api.request.public_url,
-                           'drivers', name + "/properties"),
-            link.make_link('bookmark',
-                           api.request.public_url,
-                           'drivers', name + "/properties",
-                           bookmark=True)
+            link.make_link(
+                'self', api.request.public_url, 'drivers', f"{name}/properties"
+            ),
+            link.make_link(
+                'bookmark',
+                api.request.public_url,
+                'drivers',
+                f"{name}/properties",
+                bookmark=True,
+            ),
         ]
 
     if api_utils.allow_dynamic_drivers():
@@ -140,8 +143,8 @@ def convert_with_links(name, hosts, detail=False, interface_info=None,
                         if iface['default']:
                             default = iface_name
 
-                default_key = 'default_%s_interface' % iface_type
-                enabled_key = 'enabled_%s_interfaces' % iface_type
+                default_key = f'default_{iface_type}_interface'
+                enabled_key = f'enabled_{iface_type}_interfaces'
                 driver[default_key] = default
                 driver[enabled_key] = list(enabled)
 

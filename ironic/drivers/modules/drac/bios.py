@@ -235,10 +235,7 @@ class DracWSManBIOS(base.BIOSInterface):
             if time_difference > CONF.drac.bios_factory_reset_timeout:
                 task.upgrade_lock()
                 self._delete_cached_reboot_time(node)
-                error_message = ("BIOS factory reset was not completed within "
-                                 "{} seconds, unable to cache updated bios "
-                                 "setting").format(
-                                     CONF.drac.bios_factory_reset_timeout)
+                error_message = f"BIOS factory reset was not completed within {CONF.drac.bios_factory_reset_timeout} seconds, unable to cache updated bios setting"
                 self._set_failed(task, error_message)
             else:
                 LOG.debug("Factory reset for a node %(node)s is not done "
@@ -265,8 +262,7 @@ class DracWSManBIOS(base.BIOSInterface):
 
             if config_job is None or config_job.status == 'Completed':
                 finished_job_ids.append(config_job_id)
-            elif (config_job.status == 'Failed'
-                    or config_job.status == 'Completed with Errors'):
+            elif config_job.status in ['Failed', 'Completed with Errors']:
                 finished_job_ids.append(config_job_id)
                 job_failed = True
 
@@ -289,8 +285,7 @@ class DracWSManBIOS(base.BIOSInterface):
         else:
             # invoke 'fail' event to allow conductor to put the node in
             # a clean/deploy fail state
-            error_message = ("Failed config job: {}. Message: '{}'.".format(
-                config_job.id, config_job.message))
+            error_message = f"Failed config job: {config_job.id}. Message: '{config_job.message}'."
             self._set_failed(task, error_message)
 
     def _delete_cached_config_job_ids(self, node, finished_job_ids=None):

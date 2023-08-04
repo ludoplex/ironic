@@ -23,10 +23,7 @@ from ironic.common.i18n import _
 class Octal(cfg_types.Integer):
 
     def __call__(self, value):
-        if isinstance(value, int):
-            return value
-        else:
-            return int(str(value), 8)
+        return value if isinstance(value, int) else int(str(value), 8)
 
 
 opts = [

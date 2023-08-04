@@ -84,8 +84,7 @@ def _validate(node, data):
     if data.get('properties'):
         if isinstance(data['properties'], dict):
             valid_keys = IloInspect.ESSENTIAL_PROPERTIES
-            missing_keys = valid_keys - set(data['properties'])
-            if missing_keys:
+            if missing_keys := valid_keys - set(data['properties']):
                 error = (_(
                     "Server didn't return the key(s): %(key)s") %
                     {'key': ', '.join(missing_keys)})
@@ -122,14 +121,9 @@ def _create_supported_capabilities_dict(capabilities):
               and returned by hardware.
 
     """
-    valid_cap = {}
-
-    # Add the capabilities starting with "gpu_" to the supported capabilities
-    # keys set as they are runtime generated keys and cannot be hardcoded.
-    for k in capabilities:
-        if k.startswith("gpu_"):
-            valid_cap[k] = capabilities.get(k)
-
+    valid_cap = {
+        k: capabilities.get(k) for k in capabilities if k.startswith("gpu_")
+    }
     for key in CAPABILITIES_KEYS.intersection(capabilities):
         valid_cap[key] = capabilities.get(key)
     return valid_cap
@@ -227,10 +221,6 @@ class IloInspect(base.InspectInterface):
             conductor_utils.node_power_action(task, states.POWER_ON)
             power_turned_on = True
 
-        # get the essential properties and update the node properties
-        # with it.
-
-        inspected_properties = {}
         result = _get_essential_properties(task.node, ilo_object)
 
         # A temporary hook for OOB inspection to not to update 'local_gb'
@@ -248,8 +238,10 @@ class IloInspect(base.InspectInterface):
                             '%s. Value of `properties/local_gb` of the '
                             'node is not overwritten.', task.node.uuid)
 
-        for known_property in self.ESSENTIAL_PROPERTIES:
-            inspected_properties[known_property] = properties[known_property]
+        inspected_properties = {
+            known_property: properties[known_property]
+            for known_property in self.ESSENTIAL_PROPERTIES
+        }
         node_properties = task.node.properties
         node_properties.update(inspected_properties)
         task.node.properties = node_properties
@@ -265,16 +257,15 @@ class IloInspect(base.InspectInterface):
             valid_cap = _create_supported_capabilities_dict(capabilities)
             capabilities = utils.get_updated_capabilities(
                 task.node.properties.get('capabilities'), valid_cap)
-            if capabilities:
-                node_properties['capabilities'] = capabilities
-                task.node.properties = node_properties
+        if capabilities:
+            node_properties['capabilities'] = capabilities
+            task.node.properties = node_properties
 
         # Inspect the hardware for security parameters related information.
         # Since it applies only for Gen10 based hardware, the method
         # inspect_hardware() doesn't raise an error.
         if model and 'Gen10' in model:
-            security_params = _get_security_parameters(task.node, ilo_object)
-            if security_params:
+            if security_params := _get_security_parameters(task.node, ilo_object):
                 node_properties['security_parameters'] = (
                     security_params.get('security_parameters'))
                 task.node.properties = node_properties

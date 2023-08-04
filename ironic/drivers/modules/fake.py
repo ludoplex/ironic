@@ -48,12 +48,8 @@ def parse_sleep_range(sleep_range):
         return 0, 0
 
     sleep_split = sleep_range.split(',')
-    if len(sleep_split) == 1:
-        a = sleep_split[0]
-        b = sleep_split[0]
-    else:
-        a = sleep_split[0]
-        b = sleep_split[1]
+    a = sleep_split[0]
+    b = sleep_split[0] if len(sleep_split) == 1 else sleep_split[1]
     return int(a), int(b)
 
 
@@ -86,7 +82,6 @@ class FakePower(base.PowerInterface):
 
     def reboot(self, task, timeout=None):
         sleep(CONF.fake.power_delay)
-        pass
 
     def set_power_state(self, task, power_state, timeout=None):
         sleep(CONF.fake.power_delay)
@@ -117,19 +112,15 @@ class FakeBoot(base.BootInterface):
 
     def prepare_ramdisk(self, task, ramdisk_params, mode='deploy'):
         sleep(CONF.fake.boot_delay)
-        pass
 
     def clean_up_ramdisk(self, task, mode='deploy'):
         sleep(CONF.fake.boot_delay)
-        pass
 
     def prepare_instance(self, task):
         sleep(CONF.fake.boot_delay)
-        pass
 
     def clean_up_instance(self, task):
         sleep(CONF.fake.boot_delay)
-        pass
 
 
 class FakeDeploy(base.DeployInterface):
@@ -156,15 +147,12 @@ class FakeDeploy(base.DeployInterface):
 
     def prepare(self, task):
         sleep(CONF.fake.deploy_delay)
-        pass
 
     def clean_up(self, task):
         sleep(CONF.fake.deploy_delay)
-        pass
 
     def take_over(self, task):
         sleep(CONF.fake.deploy_delay)
-        pass
 
 
 class FakeVendorA(base.VendorInterface):
@@ -185,7 +173,7 @@ class FakeVendorA(base.VendorInterface):
                    description=_("Test if the value of bar is baz"))
     def first_method(self, task, http_method, bar):
         sleep(CONF.fake.vendor_delay)
-        return True if bar == 'baz' else False
+        return bar == 'baz'
 
 
 class FakeVendorB(base.VendorInterface):
@@ -207,19 +195,19 @@ class FakeVendorB(base.VendorInterface):
                    description=_("Test if the value of bar is kazoo"))
     def second_method(self, task, http_method, bar):
         sleep(CONF.fake.vendor_delay)
-        return True if bar == 'kazoo' else False
+        return bar == 'kazoo'
 
     @base.passthru(['POST'], async_call=False,
                    description=_("Test if the value of bar is meow"))
     def third_method_sync(self, task, http_method, bar):
         sleep(CONF.fake.vendor_delay)
-        return True if bar == 'meow' else False
+        return bar == 'meow'
 
     @base.passthru(['POST'], require_exclusive_lock=False,
                    description=_("Test if the value of bar is woof"))
     def fourth_method_shared_lock(self, task, http_method, bar):
         sleep(CONF.fake.vendor_delay)
-        return True if bar == 'woof' else False
+        return bar == 'woof'
 
 
 class FakeConsole(base.ConsoleInterface):
@@ -337,11 +325,9 @@ class FakeRAID(base.RAIDInterface):
     def create_configuration(self, task, create_root_volume=True,
                              create_nonroot_volumes=True):
         sleep(CONF.fake.raid_delay)
-        pass
 
     def delete_configuration(self, task):
         sleep(CONF.fake.raid_delay)
-        pass
 
 
 class FakeBIOS(base.BIOSInterface):
@@ -377,12 +363,6 @@ class FakeBIOS(base.BIOSInterface):
             objects.BIOSSettingList.delete(task.context, node_id,
                                            delete_names)
 
-        # nochange_list is part of return of sync_node_setting and it might be
-        # useful to the drivers to give a message if no change is required
-        # during application of settings.
-        if len(nochange_list) > 0:
-            pass
-
     @base.clean_step(priority=0)
     def factory_reset(self, task):
         sleep(CONF.fake.bios_delay)
@@ -399,11 +379,6 @@ class FakeBIOS(base.BIOSInterface):
     @base.clean_step(priority=0)
     def cache_bios_settings(self, task):
         sleep(CONF.fake.bios_delay)
-        # Note: the implementation of cache_bios_settings in fake interface
-        # is just for testing purpose, for real driver implementation, please
-        # refer to develop doc at https://docs.openstack.org/ironic/latest/
-        # contributor/bios_develop.html.
-        pass
 
 
 class FakeStorage(base.StorageInterface):
@@ -417,11 +392,9 @@ class FakeStorage(base.StorageInterface):
 
     def attach_volumes(self, task):
         sleep(CONF.fake.storage_delay)
-        pass
 
     def detach_volumes(self, task):
         sleep(CONF.fake.storage_delay)
-        pass
 
     def should_write_image(self, task):
         return True
